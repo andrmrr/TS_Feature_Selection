@@ -14,7 +14,8 @@ dependencies = [
     "fastparquet (>=2024.11.0,<2025.0.0)",
     "huggingface-hub (>=0.31.1,<0.32.0)",
     "matplotlib (>=3.10.3,<4.0.0)",
-    "torch (>=2.7.0,<3.0.0)"
+    "torch (>=2.7.0,<3.0.0)",
+    "hydra-core (>=1.3.2,<2.0.0)"
 ]
 
 

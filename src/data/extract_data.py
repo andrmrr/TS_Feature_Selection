@@ -20,10 +20,10 @@ parser.add_argument("--nrows", type=int, default=20_000, help="Number of rows to
 args = parser.parse_args()
 nrows = args.nrows
 
-df = pd.read_parquet("hf://datasets/EDS-lab/electricity-demand/data/weather.parquet")
+df = pd.read_parquet("data/weather.parquet")
 df_head = df.head(nrows)
 df_head.to_csv(os.path.join(data_folder, "weather.csv"), index=False)
 
-df = pd.read_parquet("hf://datasets/EDS-lab/electricity-demand/data/demand.parquet")
+df = pd.read_parquet("data/demand.parquet")
 df_head = df.head(nrows)
 df_head.to_csv(os.path.join(data_folder, "demand.csv"), index=False)

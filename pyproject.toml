@@ -15,7 +15,9 @@ dependencies = [
     "huggingface-hub (>=0.31.1,<0.32.0)",
     "matplotlib (>=3.10.3,<4.0.0)",
     "torch (>=2.7.0,<3.0.0)",
-    "hydra-core (>=1.3.2,<2.0.0)"
+    "hydra-core (>=1.3.2,<2.0.0)",
+    "pytorch-lightning (>=2.5.1.post0,<3.0.0)",
+    "lightning (>=2.5.1.post0,<3.0.0)"
 ]
 
 

@@ -1,0 +1,14 @@
+seed: 22
+data:
+  path: data/data.npy
+model:
+  input_size: 31
+  hidden_size: 64
+  output_size: 1
+  num_layers: 2
+  dropout: 0.2
+  learning_rate: 0.001
+trainer:
+  max_epochs: 100
+  batch_size: 32
+  gpus: 1

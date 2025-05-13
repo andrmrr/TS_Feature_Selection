@@ -17,7 +17,7 @@ class TimeSeriesDataset(Dataset):
 
     def __getitem__(self, idx):
         x = self.data[idx:idx + self.seq_length]
-        y = self.data[idx + self.seq_length]
+        y = self.target[idx + self.seq_length]
         return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
     
 class LSTMModel(pl.LightningModule):

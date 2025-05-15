@@ -7,8 +7,13 @@ model:
   output_size: 1
   num_layers: 2
   dropout: 0.2
-  learning_rate: 0.001
+  learning_rate: 0.01
 trainer:
   max_epochs: 100
   batch_size: 32
   gpus: 1
+  gradient_clip_val: 0.5
+logger:
+  save_dir: logs
+  name: model
+  version: 1 

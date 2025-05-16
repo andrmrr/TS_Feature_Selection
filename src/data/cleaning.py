@@ -16,7 +16,6 @@ def group_by_hour_mean(df: pd.DataFrame, timestamp_col: str, value_col: str) -> 
     df[timestamp_col] = pd.to_datetime(df[timestamp_col])
     df = df.set_index(timestamp_col)
     hourly_mean = df[value_col].resample('h').mean()
-    print(f"Grouped by hour with mean values (NaN handled):\n{hourly_mean}")
     return hourly_mean.reset_index()
 
 def group_by_hour_mean_numeric(df: pd.DataFrame, timestamp_col: str) -> pd.DataFrame:
@@ -37,7 +36,8 @@ def clean_demand(demand):
     demand = demand[(demand['y'] >= lower_bound) & (demand['y'] <= upper_bound)]
     hourly_mean = group_by_hour_mean(demand, 'timestamp', 'y')
 
-    hourly_mean['y'] = (hourly_mean['y'] > 80).astype(int)
+
+    #hourly_mean['y'] = (hourly_mean['y'] > 80).astype(int)
     return hourly_mean
 
 def clean_weather(weather):

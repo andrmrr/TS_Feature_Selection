@@ -1,13 +1,16 @@
 seed: 22
 data:
   path: data/data.npy
+time_data:
+  path: data/time_data.npy
 model:
-  input_size: 31
-  hidden_size: 64
+  lstm_input_size: 32
+  lstm_hidden_size: 64
+  lstm_num_layers: 2
+  static_input_size: 63
+  static_hidden_size: 64
+  merged_hidden_size: 64
   output_size: 1
-  num_layers: 2
-  dropout: 0.2
-  learning_rate: 0.01
 trainer:
   max_epochs: 100
   batch_size: 32

@@ -19,7 +19,7 @@ class GradHistLogger(Callback):
                 )
 
 class TimeSeriesDataset(Dataset):
-    def __init__(self, sequence_data, static_data, seq_length):
+    def __init__(self, sequence_data, static_data, seq_length,feature_mask=None):
         self.data = sequence_data[:, 1:]
         self.target = sequence_data[:, 0]
         self.static_data = static_data
@@ -28,6 +28,8 @@ class TimeSeriesDataset(Dataset):
         self.static_data = torch.tensor(self.static_data, dtype=torch.float32)
         self.target = torch.tensor(self.target, dtype=torch.float32)
         self.seq_length = seq_length
+        if feature_mask is not None:
+            self.data = self.data[:, feature_mask == 1]
 
     def __len__(self):
         return len(self.data) - self.seq_length

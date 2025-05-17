@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from lstm import LSTMModel, TimeSeriesDataset, GradHistLogger
-
+"""
 def load_dataset(path, time_data_path):
     data = np.load(path, allow_pickle=True)
     time_data = np.load(time_data_path, allow_pickle=True)
@@ -21,7 +21,32 @@ def load_dataset(path, time_data_path):
     val_dataset = TimeSeriesDataset(val_data, val_time_data, seq_length=24)
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=2)
-    return train_loader, val_loader
+    return train_loader, val_loader"""
+
+def load_dataset(path, time_data_path, n_partitions=3, seq_length=24, batch_size=32):
+    data = np.load(path, allow_pickle=True)
+    time_data = np.load(time_data_path, allow_pickle=True)
+    N = len(data)
+
+    indices = np.arange(N)
+    partitions = np.array_split(indices, n_partitions)
+    partition_loaders = []
+
+    for part_indices in partitions:
+        part_data = data[part_indices]
+        part_time_data = time_data[part_indices]
+        n_samples = len(part_indices)
+        n_train = int(n_samples * 0.8)
+        train_data, train_time_data = part_data[:n_train], part_time_data[:n_train]
+        val_data, val_time_data = part_data[n_train:], part_time_data[n_train:]
+
+        train_dataset = TimeSeriesDataset(train_data, train_time_data, seq_length=seq_length)
+        val_dataset = TimeSeriesDataset(val_data, val_time_data, seq_length=seq_length)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+        partition_loaders.append((train_loader, val_loader))
+
+    return partition_loaders
 
 
 @hydra.main(version_base=None, config_path="../../config", config_name="config")

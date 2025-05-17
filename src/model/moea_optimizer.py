@@ -8,7 +8,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 import logging
 from torch.utils.data import DataLoader
-from ..data.dataset import TimeSeriesDataset
+from src.data.dataset import TimeSeriesDataset
 
 class FeatureSelectionProblem(Problem):
     """
@@ -32,8 +32,8 @@ class FeatureSelectionProblem(Problem):
         self.partitions = partitions
         self.config = config
         
-        # Number of features to select from
-        n_features = config.model.lstm.input_size
+        # Number of features to select from (excluding time feature)
+        n_features = config.model.lstm.input_size - 1  # Subtract 1 for time feature
         
         # Number of objectives (one per partition)
         n_objectives = len(partitions)
@@ -50,7 +50,7 @@ class FeatureSelectionProblem(Problem):
         Args:
             solution: Platypus solution object containing the feature mask
         """
-        # Convert solution to binary mask
+        # Convert solution to binary mask (excluding time feature)
         mask = np.array([int(b[0]) for b in solution.variables])
         
         # Skip if no features are selected
@@ -61,8 +61,10 @@ class FeatureSelectionProblem(Problem):
         # Convert mask to torch tensor
         mask_tensor = torch.tensor(mask, dtype=torch.bool)
         
-        # Set feature mask in model
-        self.model.set_feature_mask(mask_tensor)
+        # Create a new model instance for this evaluation
+        model = FeatureSelectionLSTM(self.config)
+        model.load_state_dict(self.model.state_dict())
+        model.set_feature_mask(mask_tensor)
         
         # Evaluate on each partition
         rmses = []
@@ -73,13 +75,11 @@ class FeatureSelectionProblem(Problem):
                     data=partition.train_data,
                     time_data=partition.train_time,
                     seq_length=self.config.data.sequence_length,
-                    feature_mask=mask_tensor
                 )
                 val_dataset = TimeSeriesDataset(
                     data=partition.val_data,
                     time_data=partition.val_time,
                     seq_length=self.config.data.sequence_length,
-                    feature_mask=mask_tensor
                 )
                 
                 # Create dataloaders
@@ -105,10 +105,10 @@ class FeatureSelectionProblem(Problem):
                     ],
                     enable_progress_bar=False
                 )
-                trainer.fit(self.model, train_loader, val_loader)
+                trainer.fit(model, train_loader, val_loader)
                 
                 # Evaluate on validation set
-                results = trainer.test(self.model, val_loader)
+                results = trainer.test(model, val_loader)
                 rmse = results[0]['test_rmse']
                 rmses.append(rmse)
                 

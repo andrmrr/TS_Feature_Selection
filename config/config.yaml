@@ -9,22 +9,26 @@ data:
 
 model:
   lstm:
-    input_size: 31  # Number of features
+    input_size: 32  # Number of features (including time)
     hidden_size: 64
     num_layers: 2
     dropout: 0.2
-  static:
-    input_size: 31  # Number of static features
-    hidden_size: 32
+    static_input_size: 63
+    static_hidden_size: 64
   merged:
-    hidden_size: 32
+    hidden_size: 64
     output_size: 1
+  ensemble:
+    hidden_size: 32
+    dropout: 0.2
+    meta_learner: "linear"  # Options: "linear", "random_forest"
 
 training:
   max_epochs: 100
   learning_rate: 0.001
   weight_decay: 1e-5
   early_stopping_patience: 10
+  lr_patience: 5  # Number of epochs to wait before reducing learning rate
 
 moea:
   population_size: 100
@@ -34,7 +38,6 @@ moea:
   tournament_size: 3
 
 ensemble:
-  meta_learner: "linear"  # Options: "linear", "random_forest"
   stacking_split: 0.2  # Proportion of validation data to use for stacking
 
 trainer:

@@ -22,11 +22,12 @@ class FeatureSelectionLSTM(pl.LightningModule):
         self.save_hyperparameters()
         
         # Initialize feature mask (all features selected by default)
-        self.feature_mask = torch.ones(config.model.lstm.input_size, dtype=torch.bool)
+        # First feature (time) is always selected
+        self.feature_mask = torch.ones(config.model.lstm.input_size - 1, dtype=torch.bool)  # Exclude time feature
         
-        # LSTM layers
+        # LSTM layers - input size will be 1 (time) + number of selected features
         self.lstm = nn.LSTM(
-            input_size=config.model.lstm.input_size,
+            input_size=1 + self.feature_mask.sum().item(),  # Time feature + selected features
             hidden_size=config.model.lstm.hidden_size,
             num_layers=config.model.lstm.num_layers,
             batch_first=True,
@@ -35,10 +36,10 @@ class FeatureSelectionLSTM(pl.LightningModule):
         
         # Fully connected layers
         self.fc_layers = nn.Sequential(
-            nn.Linear(config.model.lstm.hidden_size, config.model.lstm.fc_hidden_size),
+            nn.Linear(config.model.lstm.hidden_size, config.model.lstm.hidden_size),
             nn.ReLU(),
             nn.Dropout(config.model.lstm.dropout),
-            nn.Linear(config.model.lstm.fc_hidden_size, 1)
+            nn.Linear(config.model.lstm.hidden_size, 1)
         )
         
         # Loss function
@@ -49,41 +50,66 @@ class FeatureSelectionLSTM(pl.LightningModule):
         Set the feature mask for feature selection.
         
         Args:
-            mask: Boolean tensor indicating which features to use
+            mask: Boolean tensor indicating which features to use (excluding time feature)
         """
+        if len(mask) != self.config.model.lstm.input_size - 1:
+            raise ValueError(f"Feature mask length ({len(mask)}) does not match number of features ({self.config.model.lstm.input_size - 1})")
         self.feature_mask = mask
+        
+        # Recreate LSTM with new input size
+        if mask.sum().item() == 0:
+            print("No features selected")
+        self.lstm = nn.LSTM(
+            input_size=1 + mask.sum().item(),  # Time feature + selected features
+            hidden_size=self.config.model.lstm.hidden_size,
+            num_layers=self.config.model.lstm.num_layers,
+            batch_first=True,
+            dropout=self.config.model.lstm.dropout
+        ).to(self.device)
+        
+        # Recreate fc_layers with correct input size
+        self.fc_layers = nn.Sequential(
+            nn.Linear(self.config.model.lstm.hidden_size, self.config.model.lstm.hidden_size),
+            nn.ReLU(),
+            nn.Dropout(self.config.model.lstm.dropout),
+            nn.Linear(self.config.model.lstm.hidden_size, 1)
+        ).to(self.device)
         
     def forward(self, x: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
         """
         Forward pass through the model.
-        
         Args:
             x: Tuple of (sequence_data, static_data)
-               - sequence_data: Tensor of shape (batch_size, seq_length, n_features)
-               - static_data: Tensor of shape (batch_size, n_static_features)
-        
+            - sequence_data: Tensor of shape (batch_size, seq_length, n_features)
+            - static_data: Tensor of shape (batch_size, n_static_features) or None
         Returns:
             Tensor of shape (batch_size, 1) containing predictions
         """
         sequence_data, static_data = x
-        
-        # Apply feature mask to sequence data
-        masked_data = sequence_data[:, :, self.feature_mask]
-        
-        # LSTM forward pass
+
+        # 1. Split time and other features
+        time_feature = sequence_data[:, :, 0:1]   # shape: [batch, seq, 1]
+        other_features = sequence_data[:, :, 1:]  # shape: [batch, seq, n_other_features]
+
+        # 2. Mask application safety
+        if other_features.size(-1) != len(self.feature_mask):
+            raise ValueError(
+                f"Number of features in input ({other_features.size(-1)}) does not match mask length ({len(self.feature_mask)})"
+            )
+
+        masked_features = other_features[:, :, self.feature_mask]  # Apply mask, shape: [batch, seq, n_masked_features]
+        masked_data = torch.cat([time_feature, masked_features], dim=2)  # Combine time and masked, shape: [batch, seq, 1 + n_masked_features]
+
+        # 3. LSTM forward pass
         lstm_out, _ = self.lstm(masked_data)
-        
-        # Use only the last time step's output
-        last_hidden = lstm_out[:, -1, :]
-        
-        # Combine with static features if available
-        if static_data is not None:
-            combined = torch.cat([last_hidden, static_data], dim=1)
-        else:
-            combined = last_hidden
-        
-        # Final prediction
+        last_hidden = lstm_out[:, -1, :]  # shape: [batch, hidden_size]
+
+        # 4. Use only LSTM output since static features are disabled
+        combined = last_hidden  # shape: [batch, hidden_size]
+
+        # 5. Final prediction
         return self.fc_layers(combined)
+
     
     def training_step(self, batch: Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor], batch_idx: int) -> torch.Tensor:
         """

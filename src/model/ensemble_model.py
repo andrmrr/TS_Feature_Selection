@@ -26,7 +26,7 @@ class EnsembleModel(pl.LightningModule):
         """
         super().__init__()
         self.config = config
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=['base_model'])
         
         # Create base models with different feature masks
         self.base_models = nn.ModuleList()
@@ -149,31 +149,6 @@ class EnsembleModel(pl.LightningModule):
                 'monitor': 'val_loss'
             }
         }
-    
-    def train(self, train_loader: torch.utils.data.DataLoader, val_loader: torch.utils.data.DataLoader) -> Dict[str, float]:
-        """
-        Train the ensemble model.
-        
-        Args:
-            train_loader: DataLoader for training data
-            val_loader: DataLoader for validation data
-        
-        Returns:
-            Dictionary containing training metrics
-        """
-        trainer = pl.Trainer(
-            max_epochs=self.config.training.max_epochs,
-            callbacks=[
-                pl.callbacks.EarlyStopping(
-                    monitor='val_loss',
-                    patience=self.config.training.early_stopping_patience
-                )
-            ]
-        )
-        
-        trainer.fit(self, train_loader, val_loader)
-        
-        return trainer.callback_metrics
     
     def evaluate(self, test_loader: torch.utils.data.DataLoader) -> Dict[str, float]:
         """

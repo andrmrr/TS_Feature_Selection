@@ -1,14 +1,28 @@
 import os
+import sys
+from pathlib import Path
+
+# Add project root to Python path
+project_root = str(Path(__file__).parent.parent)
+sys.path.append(project_root)
+
 import hydra
 from omegaconf import DictConfig
 import torch
 from torch.utils.data import DataLoader
 import logging
-from data.data_loader import TimeSeriesDataLoader
-from data.dataset import TimeSeriesDataset
-from model.feature_selection_lstm import FeatureSelectionLSTM
-from model.moea_optimizer import MOEAOptimizer
-from model.ensemble_model import EnsembleModel
+from typing import List, Tuple, Dict, Any
+import numpy as np
+import json
+
+from src.data.data_loader import TimeSeriesDataLoader
+from src.data.dataset import TimeSeriesDataset
+from src.model.feature_selection_lstm import FeatureSelectionLSTM
+from src.model.moea_optimizer import MOEAOptimizer
+from src.model.ensemble_model import EnsembleModel
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+import matplotlib.pyplot as plt
 
 # Configure logging
 logging.basicConfig(
@@ -18,24 +32,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-@hydra.main(config_path="config", config_name="config", version_base=None)
+@hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(config: DictConfig):
     """
-    Main function to run the feature selection and model training pipeline.
+    Main function that orchestrates the feature selection and training process.
     
     Args:
-        config: Hydra configuration object
+        config: Configuration dictionary
     """
-    # Set random seed for reproducibility
+    # Set random seeds for reproducibility
     torch.manual_seed(config.seed)
+    np.random.seed(config.seed)
     
     # Initialize data loader
-    data_loader = TimeSeriesDataLoader(config)
+    data_loader = TimeSeriesDataLoader(
+        data_path=config.data.path,
+        time_data_path=config.data.time_data_path
+    )
     
     # Load and partition data
     logger.info("Loading and partitioning data...")
     data, time_data = data_loader.load_data()
-    partitions = data_loader.create_partitions(data, time_data)
+    partitions = data_loader.create_partitions(
+        data=data,
+        time_data=time_data,
+        n_partitions=config.data.n_partitions,
+        train_val_split=config.data.train_val_split
+    )
     
     # Initialize model
     logger.info("Initializing LSTM model...")
@@ -86,7 +109,19 @@ def main(config: DictConfig):
         shuffle=False
     )
     
-    ensemble.train(train_loader, val_loader)
+    # Create PyTorch Lightning trainer
+    trainer = Trainer(
+        max_epochs=config.training.max_epochs,
+        callbacks=[
+            EarlyStopping(
+                monitor='val_loss',
+                patience=config.training.early_stopping_patience
+            )
+        ]
+    )
+    
+    # Train the ensemble model using PyTorch Lightning
+    trainer.fit(ensemble, train_loader, val_loader)
     
     # Evaluate on last partition
     logger.info("Evaluating ensemble model...")

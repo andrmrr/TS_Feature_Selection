@@ -1,16 +1,42 @@
 seed: 22
 data:
-  path: data/data.npy
-time_data:
-  path: data/time_data.npy
+  path: "data/data.npy"
+  time_data_path: "data/time_data.npy"
+  n_partitions: 5
+  train_val_split: 0.8
+  sequence_length: 24
+  batch_size: 32
+
 model:
-  lstm_input_size: 32
-  lstm_hidden_size: 64
-  lstm_num_layers: 2
-  static_input_size: 63
-  static_hidden_size: 64
-  merged_hidden_size: 64
-  output_size: 1
+  lstm:
+    input_size: 31  # Number of features
+    hidden_size: 64
+    num_layers: 2
+    dropout: 0.2
+  static:
+    input_size: 31  # Number of static features
+    hidden_size: 32
+  merged:
+    hidden_size: 32
+    output_size: 1
+
+training:
+  max_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  early_stopping_patience: 10
+
+moea:
+  population_size: 100
+  generations: 50
+  crossover_probability: 0.9
+  mutation_probability: 0.1
+  tournament_size: 3
+
+ensemble:
+  meta_learner: "linear"  # Options: "linear", "random_forest"
+  stacking_split: 0.2  # Proportion of validation data to use for stacking
+
 trainer:
   max_epochs: 100
   batch_size: 32

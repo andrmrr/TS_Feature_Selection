@@ -6,7 +6,7 @@ import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from lstm import LSTMModel, TimeSeriesDataset, GradHistLogger
+from lstm import LSTMModel, TimeSeriesDataset
 
 def load_dataset(path, time_data_path):
     data = np.load(path, allow_pickle=True)
@@ -46,7 +46,6 @@ def main(cfg: DictConfig):
     )
 
     trainer = pl.Trainer(
-        callbacks=[GradHistLogger()],
         logger=tb_logger,
         max_epochs=cfg.trainer.max_epochs,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",

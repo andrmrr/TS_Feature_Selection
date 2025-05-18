@@ -4,20 +4,6 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import Callback
 from torch.utils.data import Dataset
 
-class GradHistLogger(Callback):
-    def on_after_backward(self, trainer, pl_module):
-        logger = pl_module.logger.experiment  # this is a TB SummaryWriter
-        global_step = trainer.global_step
-        
-        for name, param in pl_module.named_parameters():
-            if param.grad is not None:
-                # log a histogram of the gradients
-                logger.add_histogram(
-                    tag=f"grads/{name.replace('.', '/')}",
-                    values=param.grad,
-                    global_step=global_step
-                )
-
 class TimeSeriesDataset(Dataset):
     def __init__(self, sequence_data, static_data, seq_length):
         self.data = sequence_data[:, 1:]
@@ -92,7 +78,9 @@ class LSTMModel(pl.LightningModule):
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
-        self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('train_loss', loss, on_epoch=True, prog_bar=True)
+
+        values = {  "train_loss": loss }
         
         return loss
     
@@ -100,7 +88,8 @@ class LSTMModel(pl.LightningModule):
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
-        self.log('val_loss', loss, on_epoch=True, prog_bar=True)
+        self.log('val_loss', loss, prog_bar=True, reduce_fx="mean")
+
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -112,7 +101,7 @@ class LSTMModel(pl.LightningModule):
     
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=0.01)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
         return {
             'optimizer': optimizer,
             'lr_scheduler': {

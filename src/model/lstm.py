@@ -4,8 +4,11 @@ import pytorch_lightning as pl
 from torch.utils.data import Dataset
 
 class TimeSeriesDataset(Dataset):
-    def __init__(self, data, seq_length):
-        self.data = data[:, 1:]
+    def __init__(self, data, seq_length, feature_mask=None):
+        features = data[:, 1:]
+        if feature_mask is not None:
+            features = features[:, feature_mask]
+        self.data = features
         self.target = data[:, 0]
         self.target = self.target.reshape(-1, 1)
         self.data = torch.tensor(self.data, dtype=torch.float32)
@@ -18,7 +21,7 @@ class TimeSeriesDataset(Dataset):
     def __getitem__(self, idx):
         x = self.data[idx:idx + self.seq_length]
         y = self.target[idx + self.seq_length]
-        return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
+        return x.detach().clone(), y.detach().clone() #torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
     
 class LSTMModel(pl.LightningModule):
     def __init__(self, input_size, hidden_size, num_layers):

@@ -8,7 +8,12 @@ model:
   num_layers: 2
   dropout: 0.2
   learning_rate: 0.001
+  seq_length: 24
 trainer:
-  max_epochs: 100
+  max_epochs: 1
   batch_size: 32
   gpus: 1
+feature_selection:
+  n_partitions: 3
+  population_size: 5
+  n_generations: 2

@@ -4,40 +4,110 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 import pytorch_lightning as pl
-
 from lstm import LSTMModel, TimeSeriesDataset
+from feature_selection import run_nsga2_feature_selection
+from ensemble import retrain_and_predict, train_meta_learner, evaluate_ensemble, estimate_feature_importance
 
 def load_dataset(path):
     data = np.load(path, allow_pickle=True)
-    N = len(data)
-
-    train_end = int(N * 0.8)
-    train_data = data[:train_end]
-    val_data = data[train_end:]
-    train_dataset = TimeSeriesDataset(train_data, seq_length=24)
-    val_dataset = TimeSeriesDataset(val_data, seq_length=24)
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-    return train_loader, val_loader
-
+    return data
 
 @hydra.main(version_base=None, config_path="../../config", config_name="config")
 def main(cfg: DictConfig):
     pl.seed_everything(cfg.seed)
-    
-    train_loader, val_loader = load_dataset(cfg.data.path)
+    data = load_dataset(cfg.data.path)
+    n_features = data.shape[1] - 1
+    # Split off a held-out test set (e.g., last 10%)
+    N = len(data)
+    test_start = int(N * 0.9)
+    data_main = data[:test_start]
+    test_data = data[test_start:]
 
-    model = LSTMModel(
-        input_size=cfg.model.input_size,
+    # 1. Run NSGA-II feature selection
+    masks, objectives = run_nsga2_feature_selection(
+        data_main,
+        n_partitions=cfg.feature_selection.n_partitions,
+        seq_length=cfg.model.seq_length,
+        input_size=n_features,
         hidden_size=cfg.model.hidden_size,
         num_layers=cfg.model.num_layers,
-    )
-
-    trainer = pl.Trainer(
         max_epochs=cfg.trainer.max_epochs,
+        batch_size=cfg.trainer.batch_size,
+        population_size=cfg.feature_selection.population_size,
+        n_generations=cfg.feature_selection.n_generations,
+        device='gpu',
+    )
+    print(f"Found {len(masks)} Pareto-optimal feature masks.")
+
+    # 2. Retrain Pareto-optimal models and stack predictions
+    predictions, stack_targets = retrain_and_predict(
+        data_main, masks,
+        seq_length=cfg.model.seq_length,
+        hidden_size=cfg.model.hidden_size,
+        num_layers=cfg.model.num_layers,
+        max_epochs=cfg.trainer.max_epochs,
+        batch_size=cfg.trainer.batch_size,
+        device='gpu',
     )
 
-    trainer.fit(model, train_loader, val_loader)
+    # 3. Train meta-learner
+    meta = train_meta_learner(predictions, stack_targets)
+
+    # 4. Estimate feature importance
+    importance = estimate_feature_importance(masks)
+    print("Feature importance (frequency of selection):")
+    for i, imp in enumerate(importance):
+        print(f"Feature {i}: {imp:.2f}")
+
+    # 5. Evaluate ensemble on held-out test set
+    # Prepare test set predictions from each Pareto model
+    from utils import create_dataloaders
+    N_test = len(test_data)
+    test_preds_list = []
+    for mask in masks:
+        # Use all data_main for training, test_data for testing
+        train_loader, test_loader = create_dataloaders(
+            data_main, test_data, cfg.model.seq_length, cfg.trainer.batch_size, 
+            feature_mask=mask.astype(bool), num_workers=4
+        )
+        model = LSTMModel(
+            input_size=mask.sum(),
+            hidden_size=cfg.model.hidden_size,
+            num_layers=cfg.model.num_layers
+        )
+        trainer = pl.Trainer(
+            max_epochs=cfg.trainer.max_epochs,
+            enable_checkpointing=False,
+            logger=False,
+            enable_model_summary=False,
+            accelerator='gpu',
+            devices=1,
+            enable_progress_bar=True,
+            strategy='auto'
+        )
+        trainer.fit(model, train_loader, test_loader)
+        model.eval()
+        preds = []
+        with torch.no_grad():
+            for x, y in test_loader:
+                #x = x.to('cuda')  # Move input to GPU
+                out = model(x)
+                preds.append(out.cpu().numpy())
+        preds = np.concatenate(preds).flatten()
+        test_preds_list.append(preds)
+    test_predictions = np.stack(test_preds_list, axis=1)
+    # Get test targets
+    _, test_loader = create_dataloaders(
+        data_main, test_data, cfg.model.seq_length, cfg.trainer.batch_size, 
+        feature_mask=np.ones(n_features, dtype=bool), num_workers=4
+    )
+    test_targets = []
+    for _, y in test_loader:
+        test_targets.append(y.cpu().numpy())
+    test_targets = np.concatenate(test_targets).flatten()
+    # Evaluate ensemble
+    test_rmse = evaluate_ensemble(meta, test_predictions, test_targets)
+    print(f"Stacked ensemble test RMSE: {test_rmse:.4f}")
 
 if __name__ == "__main__":
     main()

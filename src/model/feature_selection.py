@@ -31,13 +31,23 @@ class FeatureSelectionProblem(Problem):
             return
         rmses = []
         for (train_data, val_data) in self.train_val:
+            # Create empty static features
+            train_static = np.zeros((len(train_data), 1))  # Single dummy static feature
+            val_static = np.zeros((len(val_data), 1))  # Single dummy static feature
+            
             train_loader, val_loader = create_dataloaders(
-                train_data, val_data, self.seq_length, self.batch_size, feature_mask=mask.astype(bool)
+                train_data, train_static,
+                val_data, val_static,
+                self.seq_length, self.batch_size, feature_mask=mask.astype(bool)
             )
             model = LSTMModel(
-                input_size=mask.sum(),
-                hidden_size=self.hidden_size,
-                num_layers=self.num_layers
+                lstm_input_size=mask.sum() + 1,  # +1 for target that's concatenated in __getitem__
+                lstm_hidden_size=self.hidden_size,
+                lstm_num_layers=self.num_layers,
+                static_input_size=1,  # Single dummy static feature
+                static_hidden_size=self.hidden_size,  # Using same size as LSTM hidden size
+                merged_hidden_size=self.hidden_size,  # Using same size as LSTM hidden size
+                output_size=1  # Single output for regression
             )
             trainer = pl.Trainer(
                 max_epochs=self.max_epochs,

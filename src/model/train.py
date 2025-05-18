@@ -24,14 +24,18 @@ def main(cfg: DictConfig):
     data_main = data[:test_start]
     test_data = data[test_start:]
 
+    # Create empty static features
+    static_data_main = np.zeros((len(data_main), 1))  # Single dummy static feature
+    static_test_data = np.zeros((len(test_data), 1))  # Single dummy static feature
+
     # 1. Run NSGA-II feature selection
     masks, objectives = run_nsga2_feature_selection(
         data_main,
         n_partitions=cfg.feature_selection.n_partitions,
         seq_length=cfg.model.seq_length,
         input_size=n_features,
-        hidden_size=cfg.model.hidden_size,
-        num_layers=cfg.model.num_layers,
+        hidden_size=cfg.model.lstm_hidden_size,
+        num_layers=cfg.model.lstm_num_layers,
         max_epochs=cfg.trainer.max_epochs,
         batch_size=cfg.trainer.batch_size,
         population_size=cfg.feature_selection.population_size,
@@ -44,8 +48,8 @@ def main(cfg: DictConfig):
     predictions, stack_targets = retrain_and_predict(
         data_main, masks,
         seq_length=cfg.model.seq_length,
-        hidden_size=cfg.model.hidden_size,
-        num_layers=cfg.model.num_layers,
+        hidden_size=cfg.model.lstm_hidden_size,
+        num_layers=cfg.model.lstm_num_layers,
         max_epochs=cfg.trainer.max_epochs,
         batch_size=cfg.trainer.batch_size,
         device='gpu',
@@ -53,6 +57,14 @@ def main(cfg: DictConfig):
 
     # 3. Train meta-learner
     meta = train_meta_learner(predictions, stack_targets)
+    
+    # Save meta-learner feature importances
+    meta_importance_df = pd.DataFrame({
+        'lstm_model_index': range(len(meta.feature_importances_)),
+        'meta_importance': meta.feature_importances_
+    })
+    meta_importance_df.to_csv('meta_learner_importances.csv', index=False)
+    print(f"\nMeta-learner feature importances saved to 'meta_learner_importances.csv'")
 
     # 4. Estimate feature importance
     importance = estimate_feature_importance(masks)
@@ -76,13 +88,19 @@ def main(cfg: DictConfig):
     for mask in masks:
         # Use all data_main for training, test_data for testing
         train_loader, test_loader = create_dataloaders(
-            data_main, test_data, cfg.model.seq_length, cfg.trainer.batch_size, 
-            feature_mask=mask.astype(bool), num_workers=4
+            data_main, static_data_main,
+            test_data, static_test_data,
+            cfg.model.seq_length, cfg.trainer.batch_size, 
+            feature_mask=mask.astype(bool), num_workers=2
         )
         model = LSTMModel(
-            input_size=mask.sum(),
-            hidden_size=cfg.model.hidden_size,
-            num_layers=cfg.model.num_layers
+            lstm_input_size=mask.sum() + 1,  # +1 for target that's concatenated in __getitem__
+            lstm_hidden_size=cfg.model.lstm_hidden_size,
+            lstm_num_layers=cfg.model.lstm_num_layers,
+            static_input_size=1,  # Single dummy static feature
+            static_hidden_size=cfg.model.lstm_hidden_size,
+            merged_hidden_size=cfg.model.lstm_hidden_size,
+            output_size=cfg.model.output_size
         )
         trainer = pl.Trainer(
             max_epochs=cfg.trainer.max_epochs,
@@ -100,7 +118,6 @@ def main(cfg: DictConfig):
         preds = []
         with torch.no_grad():
             for x, y in test_loader:
-                #x = x.to('cuda')  # Move input to GPU
                 out = model(x)
                 preds.append(out.cpu().numpy())
         preds = np.concatenate(preds).flatten()
@@ -108,8 +125,10 @@ def main(cfg: DictConfig):
     test_predictions = np.stack(test_preds_list, axis=1)
     # Get test targets
     _, test_loader = create_dataloaders(
-        data_main, test_data, cfg.model.seq_length, cfg.trainer.batch_size, 
-        feature_mask=np.ones(n_features, dtype=bool), num_workers=4
+        data_main, static_data_main,
+        test_data, static_test_data,
+        cfg.model.seq_length, cfg.trainer.batch_size, 
+        feature_mask=np.ones(n_features, dtype=bool), num_workers=2
     )
     test_targets = []
     for _, y in test_loader:

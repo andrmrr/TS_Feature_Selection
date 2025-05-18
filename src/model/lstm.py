@@ -4,14 +4,23 @@ import pytorch_lightning as pl
 from torch.utils.data import Dataset
 
 class TimeSeriesDataset(Dataset):
-    def __init__(self, data, seq_length, feature_mask=None):
-        features = data[:, 1:]
+    def __init__(self, sequence_data, static_data, seq_length, feature_mask=None, static_mask=None):
+        # Feature masking for sequence features
+        features = sequence_data[:, 1:]
         if feature_mask is not None:
             features = features[:, feature_mask]
         self.data = features
-        self.target = data[:, 0]
+
+        self.target = sequence_data[:, 0]
         self.target = self.target.reshape(-1, 1)
+        
+        # Feature masking for static features (optional, if needed)
+        if static_mask is not None:
+            static_data = static_data[:, static_mask]
+        self.static_data = static_data
+        
         self.data = torch.tensor(self.data, dtype=torch.float32)
+        self.static_data = torch.tensor(self.static_data, dtype=torch.float32)
         self.target = torch.tensor(self.target, dtype=torch.float32)
         self.seq_length = seq_length
 
@@ -19,24 +28,69 @@ class TimeSeriesDataset(Dataset):
         return len(self.data) - self.seq_length
 
     def __getitem__(self, idx):
-        x = self.data[idx:idx + self.seq_length]
+        current_features = self.data[idx]
+        current_static_features = self.static_data[idx]
+        old_features = self.data[idx: idx + self.seq_length]
+        old_targets = self.target[idx: idx + self.seq_length]
+        seq_x = torch.cat((old_features, old_targets), dim=1)
+        static_x = current_static_features  # Only pass static features to static branch
         y = self.target[idx + self.seq_length]
-        return x.detach().clone(), y.detach().clone() #torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
-    
+        return (seq_x.detach().clone(), static_x.detach().clone()), y.detach().clone()
+
 class LSTMModel(pl.LightningModule):
-    def __init__(self, input_size, hidden_size, num_layers):
+    def __init__(self,
+                 lstm_input_size, lstm_hidden_size, lstm_num_layers,
+                 static_input_size, static_hidden_size,
+                 merged_hidden_size, output_size):
+        """
+        Initialize the LSTM model with both sequence and static branches.
+        
+        Args:
+            lstm_input_size: Size of input features for LSTM
+            lstm_hidden_size: Size of LSTM hidden layer
+            lstm_num_layers: Number of LSTM layers
+            static_input_size: Size of static features
+            static_hidden_size: Size of static features hidden layer
+            merged_hidden_size: Size of combined features hidden layer
+            output_size: Size of output (usually 1 for regression)
+        """
         super().__init__()
         self.save_hyperparameters()
 
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, 1)
+        # SEQUENTIAL BRANCH
+        self.sequential_fc = nn.Sequential(
+            nn.LSTM(lstm_input_size, lstm_hidden_size, lstm_num_layers, batch_first=True),
+            nn.ReLU()
+        )
+
+        # STATIC BRANCH
+        self.static_fc = nn.Sequential(
+            nn.Linear(static_input_size, static_hidden_size),
+            nn.ReLU()
+        )
+
+        # COMBINED BRANCH
+        self.combined_fc = nn.Sequential(
+            nn.Linear(lstm_hidden_size + static_hidden_size, merged_hidden_size),
+            nn.ReLU(),
+            nn.Linear(merged_hidden_size, output_size),
+            nn.Softplus()
+        )
+        
         self.loss_fn = nn.MSELoss()
 
     def forward(self, x):
-        out, _ = self.lstm(x)
-        out = out[:, -1, :]
-        out = self.fc(out)
-        return out
+        seq_x, static_x = x
+        # SEQUENTIAL BRANCH
+        lstm_out, _ = self.sequential_fc[0](seq_x)
+        lstm_out = lstm_out[:, -1, :]
+        lstm_out = self.sequential_fc[1:](lstm_out)
+        # STATIC BRANCH
+        static_out = self.static_fc(static_x)
+        # COMBINED BRANCH
+        combined_out = torch.cat((lstm_out, static_out), dim=1)
+        combined_out = self.combined_fc(combined_out)
+        return combined_out
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -60,5 +114,13 @@ class LSTMModel(pl.LightningModule):
         return loss
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
-        return optimizer
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.01)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'interval': 'epoch',
+                'frequency': 1,
+            },
+        }

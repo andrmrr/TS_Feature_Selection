@@ -2,18 +2,28 @@ seed: 22
 data:
   path: data/data.npy
 model:
-  input_size: 31
-  hidden_size: 64
+  # LSTM parameters
+  lstm_input_size: 31  # Your sequence features + 1 (for target)
+  lstm_hidden_size: 64
+  lstm_num_layers: 2
+  
+  # Static branch parameters
+  static_input_size: 31  # Your static features size (time features + current features)
+  static_hidden_size: 32
+  
+  # Combined branch parameters
+  merged_hidden_size: 32
   output_size: 1
-  num_layers: 2
+  
+  # Training parameters
   dropout: 0.2
-  learning_rate: 0.001
+  learning_rate: 0.01
   seq_length: 24
 trainer:
-  max_epochs: 3
-  batch_size: 32
+  max_epochs: 100
+  batch_size: 64
   gpus: 1
 feature_selection:
-  n_partitions: 4
-  population_size: 6
-  n_generations: 4
+  n_partitions: 6
+  population_size: 30
+  n_generations: 20

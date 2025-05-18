@@ -29,6 +29,6 @@ def split_train_val(partition, train_ratio=0.8):
 def create_dataloaders(train_data, val_data, seq_length, batch_size=32, feature_mask=None, num_workers=4):
     train_dataset = TimeSeriesDataset(train_data, seq_length, feature_mask=feature_mask)
     val_dataset = TimeSeriesDataset(val_data, seq_length, feature_mask=feature_mask)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, persistent_workers=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, persistent_workers=True)
     return train_loader, val_loader 

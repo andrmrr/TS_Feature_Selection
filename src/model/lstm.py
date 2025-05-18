@@ -42,21 +42,21 @@ class LSTMModel(pl.LightningModule):
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=False)
         return loss
     
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
-        self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=False)
         return loss
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
-        self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=False)
         return loss
     
     def configure_optimizers(self):

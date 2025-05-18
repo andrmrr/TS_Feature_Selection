@@ -33,7 +33,8 @@ def retrain_and_predict(data, masks, seq_length, hidden_size, num_layers, max_ep
             enable_model_summary=False,
             accelerator='gpu',
             devices=1,
-            enable_progress_bar=True,
+            enable_progress_bar=False,
+            callbacks=[],
             strategy='auto'
         )
         trainer.fit(model, train_loader, stack_loader)

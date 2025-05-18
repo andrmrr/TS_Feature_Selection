@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 from lstm import LSTMModel, TimeSeriesDataset
 from feature_selection import run_nsga2_feature_selection
 from ensemble import retrain_and_predict, train_meta_learner, evaluate_ensemble, estimate_feature_importance
+import pandas as pd
 
 def load_dataset(path):
     data = np.load(path, allow_pickle=True)
@@ -58,6 +59,14 @@ def main(cfg: DictConfig):
     print("Feature importance (frequency of selection):")
     for i, imp in enumerate(importance):
         print(f"Feature {i}: {imp:.2f}")
+    
+    # Save feature importances to CSV
+    importance_df = pd.DataFrame({
+        'feature_index': range(len(importance)),
+        'importance': importance
+    })
+    importance_df.to_csv('feature_importances.csv', index=False)
+    print(f"\nFeature importances saved to 'feature_importances.csv'")
 
     # 5. Evaluate ensemble on held-out test set
     # Prepare test set predictions from each Pareto model
@@ -82,7 +91,8 @@ def main(cfg: DictConfig):
             enable_model_summary=False,
             accelerator='gpu',
             devices=1,
-            enable_progress_bar=True,
+            enable_progress_bar=False,
+            callbacks=[],
             strategy='auto'
         )
         trainer.fit(model, train_loader, test_loader)
@@ -108,6 +118,14 @@ def main(cfg: DictConfig):
     # Evaluate ensemble
     test_rmse = evaluate_ensemble(meta, test_predictions, test_targets)
     print(f"Stacked ensemble test RMSE: {test_rmse:.4f}")
+
+    # Save RMSE to the same CSV file
+    rmse_df = pd.DataFrame({
+        'metric': ['test_rmse'],
+        'value': [test_rmse]
+    })
+    rmse_df.to_csv('feature_importances.csv', mode='a', header=False, index=False)
+    print(f"Test RMSE saved to 'feature_importances.csv'")
 
 if __name__ == "__main__":
     main()

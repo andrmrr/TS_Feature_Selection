@@ -9,24 +9,23 @@ from feature_selection import run_nsga2_feature_selection
 from ensemble import retrain_and_predict, train_meta_learner, evaluate_ensemble, estimate_feature_importance
 import pandas as pd
 
-def load_dataset(path):
+def load_dataset(path, time_data_path):
     data = np.load(path, allow_pickle=True)
-    return data
+    time_data = np.load(time_data_path, allow_pickle=True)
+    return data, time_data
 
 @hydra.main(version_base=None, config_path="../../config", config_name="config")
 def main(cfg: DictConfig):
     pl.seed_everything(cfg.seed)
-    data = load_dataset(cfg.data.path)
+    data, time_data = load_dataset(cfg.data.path, cfg.time_data.path)
     n_features = data.shape[1] - 1
     # Split off a held-out test set (e.g., last 10%)
     N = len(data)
     test_start = int(N * 0.9)
     data_main = data[:test_start]
     test_data = data[test_start:]
-
-    # Create empty static features
-    static_data_main = np.zeros((len(data_main), 1))  # Single dummy static feature
-    static_test_data = np.zeros((len(test_data), 1))  # Single dummy static feature
+    time_data_main = time_data[:test_start]
+    time_test_data = time_data[test_start:]
 
     # 1. Run NSGA-II feature selection
     masks, objectives = run_nsga2_feature_selection(
@@ -53,6 +52,7 @@ def main(cfg: DictConfig):
         max_epochs=cfg.trainer.max_epochs,
         batch_size=cfg.trainer.batch_size,
         device='gpu',
+        time_data=time_data_main  # Pass static data
     )
 
     # 3. Train meta-learner
@@ -88,8 +88,8 @@ def main(cfg: DictConfig):
     for mask in masks:
         # Use all data_main for training, test_data for testing
         train_loader, test_loader = create_dataloaders(
-            data_main, static_data_main,
-            test_data, static_test_data,
+            data_main, time_data_main,  # Use actual static data instead of dummy
+            test_data, time_test_data,  # Use actual static data instead of dummy
             cfg.model.seq_length, cfg.trainer.batch_size, 
             feature_mask=mask.astype(bool), num_workers=2
         )
@@ -97,7 +97,7 @@ def main(cfg: DictConfig):
             lstm_input_size=mask.sum() + 1,  # +1 for target that's concatenated in __getitem__
             lstm_hidden_size=cfg.model.lstm_hidden_size,
             lstm_num_layers=cfg.model.lstm_num_layers,
-            static_input_size=1,  # Single dummy static feature
+            static_input_size=time_data.shape[1],  # Use actual static feature size
             static_hidden_size=cfg.model.lstm_hidden_size,
             merged_hidden_size=cfg.model.lstm_hidden_size,
             output_size=cfg.model.output_size
@@ -125,8 +125,8 @@ def main(cfg: DictConfig):
     test_predictions = np.stack(test_preds_list, axis=1)
     # Get test targets
     _, test_loader = create_dataloaders(
-        data_main, static_data_main,
-        test_data, static_test_data,
+        data_main, time_data_main,  # Use actual static data
+        test_data, time_test_data,  # Use actual static data
         cfg.model.seq_length, cfg.trainer.batch_size, 
         feature_mask=np.ones(n_features, dtype=bool), num_workers=2
     )

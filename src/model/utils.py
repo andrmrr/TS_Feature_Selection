@@ -46,9 +46,11 @@ def create_dataloaders(
         feature_mask=feature_mask, static_mask=static_mask
     )
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
+        persistent_workers=True
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,
+        persistent_workers=True
     )
     return train_loader, val_loader

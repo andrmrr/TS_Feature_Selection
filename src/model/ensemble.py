@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 from lstm import LSTMModel
 from utils import create_dataloaders
 
-def retrain_and_predict(data, masks, seq_length, hidden_size, num_layers, max_epochs, batch_size=32, device='gpu'):
+def retrain_and_predict(data, masks, seq_length, hidden_size, num_layers, max_epochs, batch_size=32, device='gpu', time_data=None):
     """
     For each mask, retrain LSTM on the full training set and generate predictions on the stacking/validation set.
     Returns: predictions (n_samples, n_models), targets (n_samples,)
@@ -16,13 +16,17 @@ def retrain_and_predict(data, masks, seq_length, hidden_size, num_layers, max_ep
     train_end = int(N * 0.8)
     train_data = data[:train_end]
     stack_data = data[train_end:]
+    
+    # Split static data if provided
+    if time_data is not None:
+        train_static_data = time_data[:train_end]
+        stack_static_data = time_data[train_end:]
+    else:
+        train_static_data = np.zeros((len(train_data), 1))
+        stack_static_data = np.zeros((len(stack_data), 1))
+    
     preds_list = []
-    train_static_data = np.zeros((len(train_data), 1))
-    stack_static_data = np.zeros((len(stack_data), 1))
     for mask in masks:
-        """train_loader, stack_loader = create_dataloaders(
-            train_data, stack_data, seq_length, batch_size, feature_mask=mask.astype(bool)
-        )"""
         train_loader, stack_loader = create_dataloaders(
             train_data, train_static_data,
             stack_data, stack_static_data,
@@ -32,10 +36,10 @@ def retrain_and_predict(data, masks, seq_length, hidden_size, num_layers, max_ep
             lstm_input_size=mask.sum() + 1,  # +1 for target that's concatenated in __getitem__
             lstm_hidden_size=hidden_size,
             lstm_num_layers=num_layers,
-            static_input_size=1,  # Single dummy static feature
-            static_hidden_size=hidden_size,  # Using same size as LSTM hidden size
-            merged_hidden_size=hidden_size,  # Using same size as LSTM hidden size
-            output_size=1  # Single output for regression
+            static_input_size=train_static_data.shape[1],  # Use actual static feature size
+            static_hidden_size=hidden_size,
+            merged_hidden_size=hidden_size,
+            output_size=1
         )
         trainer = pl.Trainer(
             max_epochs=max_epochs,

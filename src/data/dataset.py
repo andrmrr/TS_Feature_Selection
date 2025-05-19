@@ -24,13 +24,13 @@ class TimeSeriesDataset(Dataset):
         if feature_mask is not None:
             self.other_features = self.other_features[:, feature_mask]
         
-        # Process time data as static features
+        # Process time data as static features (keep unmasked)
         self.time_data = torch.tensor(time_data, dtype=torch.float32)
         
-        # Create static features by combining time data with current features
+        # Create static features by combining time data with current features (unmasked)
         self.static_data = torch.cat([
             self.time_data,
-            self.other_features
+            torch.tensor(data[:, 1:], dtype=torch.float32)  # Use unmasked features for static data
         ], dim=1)
         
         self.seq_length = seq_length
@@ -39,16 +39,13 @@ class TimeSeriesDataset(Dataset):
         return len(self.other_features) - self.seq_length
 
     def __getitem__(self, idx: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
-        # Get sequence data
+        # Get sequence data (with masked features)
         time_seq = self.time_feature[idx:idx + self.seq_length]
         other_seq = self.other_features[idx:idx + self.seq_length]
         seq_data = torch.cat([time_seq, other_seq], dim=1)
         
-        # Get static data (current time and features)
-        static_data = torch.cat([
-            self.time_data[idx].reshape(1, -1),
-            self.other_features[idx].reshape(1, -1)
-        ], dim=1)
+        # Get static data (with unmasked features)
+        static_data = self.static_data[idx].reshape(1, -1)
         
         # Get target
         target = self.time_feature[idx + self.seq_length]

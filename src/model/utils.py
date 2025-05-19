@@ -2,18 +2,19 @@ import numpy as np
 from torch.utils.data import DataLoader
 from lstm import TimeSeriesDataset
 
+from sklearn.preprocessing import MinMaxScaler
+
 def partition_time_series(data, n_partitions):
-    """
-    Split data chronologically into n_partitions (non-overlapping).
-    Returns a list of arrays, one per partition.
-    """
     N = len(data)
     partition_size = N // n_partitions
     partitions = []
     for i in range(n_partitions):
         start = i * partition_size
         end = (i + 1) * partition_size if i < n_partitions - 1 else N
-        partitions.append(data[start:end])
+        part = data[start:end]
+        scaler = MinMaxScaler()
+        part = scaler.fit_transform(part)
+        partitions.append(part)
     return partitions
 
 def split_train_val(partition, train_ratio=0.8):

@@ -21,15 +21,13 @@ def main(cfg: DictConfig):
     N = len(data)
     test_start = int(N * 0.8)
     norm_data, norm_time_data, _, _ = normalize_independently(data, time_data)
+    import pdb; pdb.set_trace()
     train_norm_data, valid_norm_data = norm_data[:test_start], norm_data[test_start:]
     train_time_data, valid_time_data = norm_time_data[:test_start], norm_time_data[test_start:]
     train_dataset = TimeSeriesDataset(train_norm_data, train_time_data, seq_length=cfg.model.seq_length)
     val_dataset = TimeSeriesDataset(valid_norm_data, valid_time_data, seq_length=cfg.model.seq_length)
     train_loader = DataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False)
-    import pdb; pdb.set_trace()
-    
-    train_loader, val_loader = load_dataset(cfg.data.path, cfg.time_data.path)
 
     model = LSTMModel(
         lstm_input_size=cfg.model.lstm_input_size,

@@ -24,10 +24,9 @@ def normalize_independently(train_data, test_data):
     """
     scaler_train = MinMaxScaler()
     scaler_test = MinMaxScaler()
-    train_data_norm = scaler_train.fit_transform(train_data)
-    test_data_norm = scaler_test.fit_transform(test_data)
-    return train_data_norm, test_data_norm, scaler_train, scaler_test
-
+    train_data[:, 1:] = scaler_train.fit_transform(train_data[:, 1:])
+    test_data[:, 1:] = scaler_test.fit_transform(test_data[:, 1:])
+    return train_data, test_data, scaler_train, scaler_test
 
 def load_dataset(path, time_data_path):
     data = np.load(path, allow_pickle=True)

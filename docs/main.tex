@@ -53,11 +53,11 @@
 
 \sloppy
 
-\title{Report: Backpropagation implementation and numerical gradient checking}
+\title{Estimating Feature Importance in LSTM-Based Time Series Forecasting via Multi-Objective Evolutionary Optimization: A Reproducibility Study}
 \author{Niebo Zhang Ye, Joan Lapeyra Amat, Andreja Andrejic, Rosen Dimov}
 \date{Algorithmics for Data Mining, Master in Innovation and Research in Informatics - Universitat Politècnica de Catalunya }
 
-\addbibresource{/home/countdown/Documents/TS_Feature_Selection/docs/references.bib}
+\addbibresource{references.bib}
 
 \begin{document}
 
@@ -65,7 +65,10 @@
 
 \makenomenclature
 \maketitle
-\title\textbf{Abstract} 
+
+\begin{abstract}
+Feature selection is a crucial step in time series forecasting, particularly for complex models such as Long Short-Term Memory (LSTM) networks. Recent work has introduced embedded feature selection methods based on multi-objective evolutionary algorithms (MOEAs), enabling simultaneous optimization of LSTM weights and input feature subsets, with feature importance derived from model selection frequency. In this project, we aim to reproduce and adapt the methodology proposed by Espinosa et al.\ for estimating feature importance in LSTM-based time series models. Our approach leverages a multi-objective evolutionary strategy to generate a diverse ensemble of LSTM models trained on different feature subsets, followed by stacking-based ensemble learning. Feature importance is quantified by the frequency of feature selection across the Pareto-optimal models. Due to the complexity of the original algorithm, several simplifications and modifications were introduced in our implementation. We present our methodological adaptations, discuss challenges encountered in reproducing the state-of-the-art, and report experimental results on the [UNKNOWN] dataset. Our findings offer practical insights into the feasibility of embedded feature selection for LSTM forecasting and highlight key considerations for future reproducibility and interpretability research.
+\end{abstract}
 
 \begin{flushleft}
 \end{flushleft}
@@ -78,7 +81,28 @@ Key words:\textbf{ }
 
 \section{Introduction}
 
-\section{Background}
+Time series forecasting is a fundamental task in machine learning, underpinning applications in domains ranging from finance to environmental monitoring. Accurately predicting future values from sequential data requires models that can capture both short- and long-term dependencies, with Long Short-Term Memory (LSTM) networks emerging as a powerful solution due to their architecture, which effectively mitigates the vanishing gradient problem common in traditional recurrent neural networks.
+
+However, the performance and interpretability of LSTM-based forecasting models are heavily influenced by the quality of the input features. Feature selection (FS) techniques aim to identify a subset of relevant variables, thereby reducing overfitting, improving generalization, and enhancing model transparency. FS methods can generally be classified as filter, wrapper, or embedded approaches. ~\cite{espinosa2023efs} While filter and wrapper methods select features independently of model training or through external evaluation loops, embedded methods integrate feature selection within the training process itself, potentially offering a better balance between accuracy and computational efficiency.
+
+A notable challenge in time-series feature selection is quantifying the relative importance of input features in complex, non-linear models like LSTMs. Recent advances have explored attention mechanisms, sensitivity analysis, and evolutionary algorithms for embedded feature selection, yet robust methods for interpretable and generalizable feature importance remain an open problem, particularly for high-dimensional or multivariate time series~\cite{espinosa2023efs}.
+
+In this work, we investigate the problem of feature importance estimation in LSTM-based time-series forecasting models. Inspired by the embedded feature selection framework proposed by Espinosa et al.~\cite{espinosa2023efs}, which leverages multi-objective evolutionary algorithms (MOEAs) to simultaneously optimize LSTM weights and feature subsets, we attempt to reproduce and adapt this methodology for our own experimental setting. The referenced approach frames feature selection and model training as a multi-objective optimization task, with ensemble learning used to aggregate the predictive performance of non-dominated LSTM models. Feature importance is then determined by the frequency with which features are selected across the Pareto front.
+
+While we adopted the core concepts of this framework, our implementation involved several adaptations and simplifications due to the complexity of the original method and computational constraints. In particular, certain algorithmic details or experimental procedures could not be exactly matched; these deviations are discussed in Section~\ref{sec:methods}.
+
+Our contributions are as follows:
+\begin{itemize}
+    \item We provide a practical implementation and empirical evaluation of a feature importance estimation pipeline for LSTM-based time-series forecasting, rooted in multi-objective evolutionary optimization.
+    \item We assess the impact of feature selection frequency as a measure of importance in ensemble LSTM models.
+    \item We discuss the methodological challenges encountered in reproducing the state-of-the-art, providing insights for future research and open-source implementations.
+\end{itemize}
+
+The rest of this paper is organized as follows: Section~\ref{sec:related_work} reviews related work in time-series feature selection and ensemble learning for LSTMs. Section~\ref{sec:methods} details our adopted methodology and any deviations from the original algorithm. Section~\ref{sec:experiments} presents our experimental results using the [UNKNOWN] dataset. Finally, Section~\ref{sec:conclusion} concludes the paper and outlines directions for future research.
+
+
+
+\section{Related Work}
 
 \section{Preliminaries}
 
@@ -96,6 +120,71 @@ $l$.}
 \nomenclature[S]{$\delta^{(l)}$}{Error signal at layer $l$, defined as $\delta^{(l)}_i=\frac{\partial C}{\partial z^{(l)}_i}$.}
  
 \section{Methods}
+\label{sec:methods}
+
+\subsection{Overview}
+
+Our methodological approach was inspired by Espinosa et al.~\cite{espinosa2023efs}, who introduced an embedded feature selection framework for LSTM networks using multi-objective evolutionary algorithms (MOEAs) and ensemble learning. The core idea is to jointly optimize input feature subsets and LSTM parameters, generating a Pareto front of diverse models whose selection frequencies provide an interpretable measure of feature importance. Our implementation adapts and simplifies this methodology to accommodate computational constraints and codebase feasibility, while retaining the essential research questions regarding feature importance estimation in LSTM-based time series forecasting.
+
+\subsection{Data Preprocessing and Partitioning}
+
+The data preprocessing pipeline involves normalization of input features and chronological splitting of the dataset. Following the methodology in~\cite{espinosa2023efs}, we independently normalize the training and test sets using MinMax scaling to prevent information leakage. The preprocessed dataset is then partitioned into $n$ consecutive, non-overlapping subsets for use in multi-objective optimization; each partition corresponds to a separate objective in the MOEA. All splits and normalization procedures are performed strictly chronologically to preserve temporal structure, in line with best practices for time-series forecasting.
+
+\subsection{Embedded Feature Selection with MOEA}
+
+\subsubsection{Optimization Problem Formulation}
+
+The feature selection and model parameter optimization are jointly formulated as a multi-objective problem. Each solution (individual) in the population is encoded as a concatenation of a binary feature mask (indicating selected input features) and real-valued LSTM weights and biases. The objectives are to minimize the root mean squared error (RMSE) on each of the $n$ data partitions and, optionally, to minimize the number of selected features as a proxy for model sparsity.
+
+\subsubsection{Evolutionary Algorithm}
+
+We employ the NSGA-II algorithm as implemented in the Platypus Python library, utilizing mixed binary-real encodings and standard crossover and mutation operators for each type. The fitness of each individual is evaluated by applying the corresponding LSTM, parameterized by the decoded weights and selected features, to each data partition and computing the RMSE. Solutions with zero features selected are penalized to avoid degenerate cases.
+
+The principal advantage of this approach is that it enables simultaneous exploration of both model parameters and feature subsets without reliance on gradient-based optimization, potentially overcoming local minima and discovering sparse, high-performing models. However, the computational cost is substantial, as each fitness evaluation requires a full forward pass of an LSTM on a data partition, and evolutionary search is inherently less sample-efficient than gradient descent.
+
+\subsection{Model Evaluation and Ensemble Learning}
+
+After running NSGA-II, we obtain a set of non-dominated solutions (the Pareto front), each representing a potentially useful LSTM model with its own selected features and parameters. Following Espinosa et al., we aggregate these models using a stacking-based ensemble method. For each sample in a stacking set (held-out validation data), we compute predictions from all Pareto models, then train a meta-learner (Extra Trees Regressor) to combine these outputs. This ensemble aims to exploit complementary model strengths and enhance generalization performance.
+
+\subsection{Feature Importance Estimation}
+
+Feature importance is quantified by the frequency with which each feature is selected across all Pareto-optimal models, formalized as:
+\[
+I_i = \frac{1}{m} \sum_{j=1}^m s^j_i
+\]
+where $s^j_i$ indicates whether feature $i$ was selected in model $j$ and $m$ is the number of Pareto models. This definition provides a straightforward, interpretable measure of global feature relevance across the ensemble.
+
+\subsection{Implementation Details and Deviations}
+
+Several adaptations were introduced relative to the original paper:
+\begin{itemize}
+    \item Our LSTM implementation does not fully match the gating, weight partitioning, or dynamic recurrent connections as described in~\cite{espinosa2023efs}. In particular, certain simplifications were made in the weight extraction and forward pass code to facilitate tractability.
+    \item Static features and multi-layer LSTMs are supported in code, but most experiments use a single sequence of features, consistent with the dataset structure.
+    \item The meta-learner in our ensemble is a random forest variant (Extra Trees), whereas the original paper uses an additional LSTM model.
+    \item The recursive multi-step ahead forecasting is implemented, but with a basic strategy for input preparation between steps.
+\end{itemize}
+
+\subsection{Assumptions, Validity, and Limitations}
+----------------------------------------------TO BE CHANGED----------------------------------------------
+Our approach assumes that feature importance can be inferred from evolutionary selection frequency, which may conflate redundancy and relevance when features are correlated. The evolutionary algorithm is assumed to find a sufficiently diverse and high-quality set of models, but population-based search is stochastic and sensitive to parameter choices. Furthermore, simplifying the LSTM implementation and fitness evaluation may impact the ability to discover intricate temporal dependencies.
+
+Computational complexity is a key limitation: evolutionary optimization over LSTM weights and feature masks is orders of magnitude slower than conventional training. As such, we limit population sizes and generations, which may affect convergence and generalizability. Lastly, the interpretability of frequency-based feature importance, while attractive, is inherently model-dependent and may not capture conditional feature effects.
+
+\subsection{Reported Issues and Practical Challenges}
+
+During implementation, several practical issues emerged:
+\begin{itemize}
+    \item \textbf{Computational cost:} The need to repeatedly evaluate LSTM models for each individual in each generation resulted in significant run times, especially for larger feature spaces.
+    \item \textbf{Code complexity:} Reproducing the full details of the original gating and weight matrix management proved challenging, necessitating code simplifications.
+    \item \textbf{Stochasticity:} Results (Pareto models and feature importances) showed some sensitivity to random seed and evolutionary hyperparameters.
+    \item \textbf{Reproducibility:} Differences in data splits, scaling, and code details may explain deviations in performance from the original study.
+\end{itemize}
+------------------------------
+
+\subsection{Summary}
+
+Despite these limitations, our methods provide a feasible pathway for embedded feature selection and interpretable feature importance estimation in LSTM-based time series forecasting. We believe the practical insights gained will be of value to researchers seeking to balance accuracy and complexity in deep time series models.
+
 
 \section{Results}
 

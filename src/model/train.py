@@ -21,7 +21,6 @@ def main(cfg: DictConfig):
     N = len(data)
     test_start = int(N * 0.8)
     norm_data, norm_time_data, _, _ = normalize_independently(data, time_data)
-    import pdb; pdb.set_trace()
     train_norm_data, valid_norm_data = norm_data[:test_start], norm_data[test_start:]
     train_time_data, valid_time_data = norm_time_data[:test_start], norm_time_data[test_start:]
     train_dataset = TimeSeriesDataset(train_norm_data, train_time_data, seq_length=cfg.model.seq_length)

@@ -6,32 +6,38 @@ from lstm import LSTMModel
 import torch
 
 def plot_real_target(train_loader, val_loader, model):
-    # Get the first batch from the validation loader
-    for batch in train_loader:
-        x, y = batch
-        break
-
     device = next(model.parameters()).device
 
-    # Move input to the same device as model
-    if isinstance(x, (tuple, list)):
-        x = tuple(xx.to(device) for xx in x)
-    else:
-        x = x.to(device)
-    y = y.to(device)
+    # Collect all batches from the validation loader
+    all_y = []
+    all_y_hat = []
 
     model.eval()
     with torch.no_grad():
-        y_hat = model(x)
+        for batch in val_loader:
+            x, y = batch
+            if isinstance(x, (tuple, list)):
+                x = tuple(xx.to(device) for xx in x)
+            else:
+                x = x.to(device)
+            y = y.to(device)
+            y_hat = model(x)
+            all_y.append(y.cpu())
+            all_y_hat.append(y_hat.cpu())
+    import pdb; pdb.set_trace()
+    all_y = torch.cat(all_y, dim=0).numpy()
+    all_y_hat = torch.cat(all_y_hat, dim=0).numpy()
 
+    MSE_loss = ((all_y - all_y_hat) ** 2)
+    # 
 
-    # Plot the real vs predicted values
+    # Plot the whole dataset
     plt.figure(figsize=(10, 5))
-    plt.plot(y.cpu().numpy(), label='Real')
-    plt.plot(y_hat.cpu().numpy(), label='Predicted')
-    plt.legend()
-    plt.title('Real vs Predicted Values')
+    plt.plot(all_y, label='Real')
+    plt.plot(all_y_hat, label='Predicted')
+    plt.title('Real vs Predicted')
     plt.show()
+
 
 @hydra.main(version_base=None, config_path="../../config", config_name="config")
 def main(cfg: DictConfig):

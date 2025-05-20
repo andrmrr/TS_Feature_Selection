@@ -1,8 +1,38 @@
 import numpy as np
 from torch.utils.data import DataLoader
 from lstm import TimeSeriesDataset
-
 from sklearn.preprocessing import MinMaxScaler
+
+def load_dataset_2(path, time_data_path):
+    data = np.load(path, allow_pickle=True)
+    time_data = np.load(time_data_path, allow_pickle=True)
+    N = len(data)
+
+    train_end = int(N * 0.8)
+    train_data, train_time_data = data[:train_end], time_data[:train_end]
+    val_data, val_time_data = data[train_end:], time_data[train_end:]
+    train_dataset = TimeSeriesDataset(train_data, train_time_data, seq_length=24)
+    val_dataset = TimeSeriesDataset(val_data, val_time_data, seq_length=24)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=2)
+    return train_loader, val_loader
+
+def normalize_independently(train_data, test_data):
+    """
+    Normalize train and test independently (like in the paper).
+    Each gets its own MinMaxScaler fitted to its data.
+    """
+    scaler_train = MinMaxScaler()
+    scaler_test = MinMaxScaler()
+    train_data_norm = scaler_train.fit_transform(train_data)
+    test_data_norm = scaler_test.fit_transform(test_data)
+    return train_data_norm, test_data_norm, scaler_train, scaler_test
+
+
+def load_dataset(path, time_data_path):
+    data = np.load(path, allow_pickle=True)
+    time_data = np.load(time_data_path, allow_pickle=True)
+    return data, time_data
 
 def partition_time_series(data, n_partitions):
     N = len(data)

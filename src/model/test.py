@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from train import load_dataset
+from model.feature_train import load_dataset
 import hydra
 from omegaconf import DictConfig
 from lstm import LSTMModel

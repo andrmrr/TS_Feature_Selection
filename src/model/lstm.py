@@ -92,6 +92,7 @@ class LSTMModel(pl.LightningModule):
         return loss
     
     def validation_step(self, batch, batch_idx):
+        import pdb; pdb.set_trace()
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)

@@ -4,7 +4,6 @@ from sklearn.metrics import mean_squared_error
 import torch
 import pytorch_lightning as pl
 from lstm import LSTMModel
-from utils import partition_time_series, split_train_val, create_dataloaders
 from sklearn.metrics import mean_squared_error
 from platypus import HUX, SBX, PM, CompoundOperator
 

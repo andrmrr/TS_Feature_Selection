@@ -1,0 +1,109 @@
+\documentclass[12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[top=2cm, bottom=2cm, left=2.5cm, right=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{nomencl}
+\usepackage{listings}
+\usepackage{biblatex}
+\usepackage{amsfonts}
+\usepackage{hyperref}
+\usepackage{float}
+
+\usepackage{subcaption}
+\usepackage{tabularx}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+
+
+
+\newbibmacro*{bbx:parunit}{%
+  \ifbibliography
+    {\setunit{\bibpagerefpunct}\newblock
+     \usebibmacro{pageref}%
+     \clearlist{pageref}%
+     \setunit{\adddot\par\nobreak}}
+    {}}
+
+\renewbibmacro*{doi+eprint+url}{%
+  \usebibmacro{bbx:parunit}% Added
+  \iftoggle{bbx:doi}
+    {\printfield{doi}}
+    {}%
+  \iftoggle{bbx:eprint}
+    {\usebibmacro{eprint}}
+    {}%
+  \iftoggle{bbx:url}
+    {\usebibmacro{url+urldate}}
+    {}}
+
+\renewbibmacro*{eprint}{%
+  \usebibmacro{bbx:parunit}% Added
+  \iffieldundef{eprinttype}
+    {\printfield{eprint}}
+    {\printfield[eprint:\strfield{eprinttype}]{eprint}}}
+
+\renewbibmacro*{url+urldate}{%
+  \usebibmacro{bbx:parunit}% Added
+  \printfield{url}%
+  \iffieldundef{urlyear}
+    {}
+    {\setunit*{\addspace}%
+     \printtext[urldate]{\printurldate}}}
+
+\sloppy
+
+\title{Report: Backpropagation implementation and numerical gradient checking}
+\author{Niebo Zhang Ye, Joan Lapeyra Amat, Andreja Andrejic, Rosen Dimov}
+\date{Algorithmics for Data Mining, Master in Innovation and Research in Informatics - Universitat Politècnica de Catalunya }
+
+\addbibresource{/home/countdown/Documents/TS_Feature_Selection/docs/references.bib}
+
+\begin{document}
+
+\maketitle
+
+\makenomenclature
+\maketitle
+\title\textbf{Abstract} 
+
+\begin{flushleft}
+\end{flushleft}
+
+\begin{flushleft}
+Key words:\textbf{ }
+\end{flushleft}
+
+\printnomenclature
+
+\section{Introduction}
+
+\section{Background}
+
+\section{Preliminaries}
+
+\nomenclature[S]{$a^{(l)}$}{ $a^{(l)} = \sigma^{(l)} (z^{(l)})$ activation vector of layer $l$.}
+\nomenclature[S]{$z^{(l)}$}{$z^{(l)} = W^{(l)}a^{(l-1)} + b^{(l)}$, pre-activation vector at layer 
+$l$.} 
+\nomenclature[S]{$W^{(l)}$}{Weights of layer $l$.}
+\nomenclature[S]{$b^{(l)}$}{Bias of layer $l$.}
+\nomenclature[S]{$f$}{$f\colon \mathbb{R}^n \to \mathbb{R}^m$, function representing the neural network.}
+\nomenclature[S]{$m$}{Size of the predicted date / output of the network.}
+\nomenclature[S]{$n$}{Size of the input data.}
+\nomenclature[S]{$y$}{Target data.}
+\nomenclature[S]{$x$}{Input data.}
+\nomenclature[S]{$C$}{Loss (cost) function, scalar-value function $C(a^{(l)}, y)$.}
+\nomenclature[S]{$\delta^{(l)}$}{Error signal at layer $l$, defined as $\delta^{(l)}_i=\frac{\partial C}{\partial z^{(l)}_i}$.}
+ 
+\section{Methods}
+
+\section{Results}
+
+\section{Discussion}
+
+\section{Future Works}
+
+\printbibliography
+
+\end{document}
+

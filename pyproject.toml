@@ -14,13 +14,32 @@ dependencies = [
     "fastparquet (>=2024.11.0,<2025.0.0)",
     "huggingface-hub (>=0.31.1,<0.32.0)",
     "matplotlib (>=3.10.3,<4.0.0)",
-    "torch (>=2.7.0,<3.0.0)",
     "hydra-core (>=1.3.2,<2.0.0)",
     "pytorch-lightning (>=2.5.1.post0,<3.0.0)",
-    "lightning (>=2.5.1.post0,<3.0.0)"
+    "lightning (>=2.5.1.post0,<3.0.0)",
+    "tensorboard (>=2.19.0,<3.0.0)",
+    "torch (>=2.7.0,<3.0.0)",
+    "torchvision (>=0.22.0,<0.23.0)",
+    "torchaudio (>=2.7.0,<3.0.0)",
+    "scikit-learn (>=1.6.1,<2.0.0)",
+    "platypus (>=1.0,<2.0)",
+    "setuptools (>=80.7.1,<81.0.0)",
+    "platypus-opt (>=1.4.1,<2.0.0)",
 ]
 
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "torch128"
+url = "https://download.pytorch.org/whl/cu128"
+priority = "explicit"
+[tool.poetry.dependencies]
+torch = {source = "torch128"}
+torchvision = {source = "torch128"}
+torchaudio = {source = "torch128"}
+
+[tool.poetry]
+package-mode = false

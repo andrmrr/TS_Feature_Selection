@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import Callback
 from torch.utils.data import Dataset
 
 class TimeSeriesDataset(Dataset):
@@ -30,40 +31,31 @@ class TimeSeriesDataset(Dataset):
     def __getitem__(self, idx):
         current_features = self.data[idx]
         current_static_features = self.static_data[idx]
+
         old_features = self.data[idx: idx + self.seq_length]
         old_targets = self.target[idx: idx + self.seq_length]
         seq_x = torch.cat((old_features, old_targets), dim=1)
-        static_x = current_static_features  # Only pass static features to static branch
+        static_x = torch.cat((current_features, current_static_features))
         y = self.target[idx + self.seq_length]
         return (seq_x.detach().clone(), static_x.detach().clone()), y.detach().clone()
-
+    
 class LSTMModel(pl.LightningModule):
     def __init__(self,
                  lstm_input_size, lstm_hidden_size, lstm_num_layers,
                  static_input_size, static_hidden_size,
                  merged_hidden_size, output_size):
-        """
-        Initialize the LSTM model with both sequence and static branches.
-        
-        Args:
-            lstm_input_size: Size of input features for LSTM
-            lstm_hidden_size: Size of LSTM hidden layer
-            lstm_num_layers: Number of LSTM layers
-            static_input_size: Size of static features
-            static_hidden_size: Size of static features hidden layer
-            merged_hidden_size: Size of combined features hidden layer
-            output_size: Size of output (usually 1 for regression)
-        """
         super().__init__()
         self.save_hyperparameters()
 
         # SEQUENTIAL BRANCH
+
         self.sequential_fc = nn.Sequential(
             nn.LSTM(lstm_input_size, lstm_hidden_size, lstm_num_layers, batch_first=True),
             nn.ReLU()
         )
 
         # STATIC BRANCH
+
         self.static_fc = nn.Sequential(
             nn.Linear(static_input_size, static_hidden_size),
             nn.ReLU()
@@ -96,14 +88,16 @@ class LSTMModel(pl.LightningModule):
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
-        self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log('train_loss', loss, on_epoch=True, prog_bar=True)
         return loss
     
     def validation_step(self, batch, batch_idx):
+        import pdb; pdb.set_trace()
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
-        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log('val_loss', loss, prog_bar=True, reduce_fx="mean")
+
         return loss
 
     def test_step(self, batch, batch_idx):

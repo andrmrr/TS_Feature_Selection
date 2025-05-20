@@ -32,6 +32,25 @@ if __name__ == '__main__':
 
     # Join the datasets
     joined_df = join_dataframes(df1, df2, args.tag)
+
+    # Create time features
+    time_feature_df = pd.DataFrame(
+        columns=['hour', 'dayofweek', 'season'],
+    )
+
+    time_feature_df['hour'] = pd.to_datetime(joined_df['timestamp']).dt.hour
+    time_feature_df['dayofweek'] = pd.to_datetime(joined_df['timestamp']).dt.dayofweek
+    time_feature_df['season'] = pd.to_datetime(joined_df['timestamp']).dt.month % 12 // 3
+
+    # One-hot encode the categorical features
+    time_feature_df = pd.get_dummies(time_feature_df, columns=['hour', 'dayofweek', 'season'], drop_first=True)
+    time_feature_df['timestamp'] = pd.to_datetime(joined_df['timestamp']).astype(int) // 10**9
+    time_feature_df['timestamp'] = time_feature_df['timestamp'].astype(int)
+    time_feature_df = time_feature_df.astype(np.float32)
+    time_feature_df = time_feature_df.drop(columns=['timestamp'])
+    time_feature_df = time_feature_df.to_numpy()
+    np.save(args.output.replace('.npy', '_time.npy'), time_feature_df)
+
     joined_df.drop(columns=['timestamp'], inplace=True)
     joined_data = joined_df.to_numpy()
     np.save(args.output, joined_data)

@@ -1,72 +1,21 @@
 import hydra
 from omegaconf import DictConfig
 import torch
+from torch.utils.data import DataLoader
 import numpy as np
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import TensorBoardLogger
-from utils import load_dataset, normalize_independently
-
-from lstm import LSTMModel
-from feature_selection import run_nsga2_feature_selection, simple_forward_lstm
-from ensemble import get_predictions_from_evolved_models, train_meta_learner, evaluate_ensemble, estimate_feature_importance
+from lstm import LSTMModel, TimeSeriesDataset
+from feature_selection import run_nsga2_feature_selection
+from ensemble import retrain_and_predict, train_meta_learner, evaluate_ensemble, estimate_feature_importance
 import pandas as pd
 
-
-def recursive_multistep_forecast(test_data, pareto_models, meta, h, hidden_size):
-    """
-    Recursive multi-step ahead forecasting for each sample in the test set.
-    Args:
-        test_data: np.array, shape (N_test, n_features + 1)
-        pareto_models: list of (mask, w, _)
-        meta: trained meta-learner
-        h: number of steps ahead to forecast
-        hidden_size: hidden size for LSTM
-        
-    Returns:
-        preds: array, shape (N_test - h, h)
-        targets: array, shape (N_test - h, h)
-    """
-    X_full = test_data[:, 1:]
-    y_full = test_data[:, 0]
-    N = len(test_data)
-    preds = []
-    targets = []
-
-    for i in range(N - h):   # <---- ONLY GO TO N - h
-        X_input = X_full[i, :].reshape(1, -1)
-        step_preds = []
-        step_targets = y_full[i+1 : i+h+1]  # always length h
-
-        for t in range(h):
-            pareto_preds = []
-            for mask, w, _ in pareto_models:
-                X_masked = X_input[:, mask.astype(bool)]
-                pred = simple_forward_lstm(X_masked, w, mask.sum(), hidden_size)
-                pareto_preds.append(pred[0])
-            pareto_preds = np.array(pareto_preds).reshape(1, -1)
-            ensemble_pred = meta.predict(pareto_preds)[0]
-            step_preds.append(ensemble_pred)
-
-            # Prepare input for next step (simplest: use next row of test data)
-            if i + t + 1 < N:
-                X_input = X_full[i + t + 1, :].reshape(1, -1)
-            else:
-                break
-
-        preds.append(step_preds)
-        targets.append(step_targets)
-
-    preds = np.array(preds)
-    targets = np.array(targets)
-    return preds, targets
+def load_dataset(path, time_data_path):
+    data = np.load(path, allow_pickle=True)
+    time_data = np.load(time_data_path, allow_pickle=True)
+    return data, time_data
 
 @hydra.main(version_base=None, config_path="../../config", config_name="config")
 def main(cfg: DictConfig):
-    tb_logger = TensorBoardLogger(
-        save_dir=cfg.logger.save_dir,
-        name=cfg.logger.name,
-        version=cfg.logger.version,
-    )
     pl.seed_everything(cfg.seed)
     data, time_data = load_dataset(cfg.data.path, cfg.time_data.path)
     n_features = data.shape[1] - 1
@@ -75,32 +24,35 @@ def main(cfg: DictConfig):
     test_start = int(N * 0.9)
     data_main = data[:test_start]
     test_data = data[test_start:]
-    
-    data_main, test_data, _, _ = normalize_independently(data_main, test_data)
-    
     time_data_main = time_data[:test_start]
     time_test_data = time_data[test_start:]
 
     # 1. Run NSGA-II feature selection
-    pareto_models = run_nsga2_feature_selection(
+    masks, objectives = run_nsga2_feature_selection(
         data_main,
         n_partitions=cfg.feature_selection.n_partitions,
         seq_length=cfg.model.seq_length,
         input_size=n_features,
         hidden_size=cfg.model.lstm_hidden_size,
-        #max_epochs=cfg.trainer.max_epochs,
-        #batch_size=cfg.trainer.batch_size,
+        num_layers=cfg.model.lstm_num_layers,
+        max_epochs=cfg.trainer.max_epochs,
+        batch_size=cfg.trainer.batch_size,
         population_size=cfg.feature_selection.population_size,
         n_generations=cfg.feature_selection.n_generations,
-        #device='gpu',
+        device='gpu',
     )
-    print(f"Found {len(pareto_models)} Pareto-optimal feature masks.")
+    print(f"Found {len(masks)} Pareto-optimal feature masks.")
 
     # 2. Retrain Pareto-optimal models and stack predictions
-    stack_start = int(len(data_main) * 0.8)
-    stacking_range = (stack_start, len(data_main))
-    predictions, stack_targets = get_predictions_from_evolved_models(
-        data_main, pareto_models, stacking_range, cfg.model.lstm_hidden_size
+    predictions, stack_targets = retrain_and_predict(
+        data_main, masks,
+        seq_length=cfg.model.seq_length,
+        hidden_size=cfg.model.lstm_hidden_size,
+        num_layers=cfg.model.lstm_num_layers,
+        max_epochs=cfg.trainer.max_epochs,
+        batch_size=cfg.trainer.batch_size,
+        device='gpu',
+        time_data=time_data_main  # Pass static data
     )
 
     # 3. Train meta-learner
@@ -115,7 +67,7 @@ def main(cfg: DictConfig):
     print(f"\nMeta-learner feature importances saved to 'meta_learner_importances.csv'")
 
     # 4. Estimate feature importance
-    importance = estimate_feature_importance(pareto_models)
+    importance = estimate_feature_importance(masks)
     print("Feature importance (frequency of selection):")
     for i, imp in enumerate(importance):
         print(f"Feature {i}: {imp:.2f}")
@@ -132,43 +84,59 @@ def main(cfg: DictConfig):
     # Prepare test set predictions from each Pareto model
     from utils import create_dataloaders
     N_test = len(test_data)
-    X_test = test_data[:, 1:]
-    y_test = test_data[:, 0]
     test_preds_list = []
-    for mask, w, _ in pareto_models:
-        X_test_masked = X_test[:, mask.astype(bool)]
-        preds = simple_forward_lstm(X_test_masked, w, mask.sum(), hidden_size=cfg.model.lstm_hidden_size)
+    for mask in masks:
+        # Use all data_main for training, test_data for testing
+        train_loader, test_loader = create_dataloaders(
+            data_main, time_data_main,  # Use actual static data instead of dummy
+            test_data, time_test_data,  # Use actual static data instead of dummy
+            cfg.model.seq_length, cfg.trainer.batch_size, 
+            feature_mask=mask.astype(bool), num_workers=2
+        )
+        model = LSTMModel(
+            lstm_input_size=mask.sum() + 1,  # +1 for target that's concatenated in __getitem__
+            lstm_hidden_size=cfg.model.lstm_hidden_size,
+            lstm_num_layers=cfg.model.lstm_num_layers,
+            static_input_size=time_data.shape[1],  # Use actual static feature size
+            static_hidden_size=cfg.model.lstm_hidden_size,
+            merged_hidden_size=cfg.model.lstm_hidden_size,
+            output_size=cfg.model.output_size
+        )
+        trainer = pl.Trainer(
+            max_epochs=cfg.trainer.max_epochs,
+            enable_checkpointing=False,
+            logger=False,
+            enable_model_summary=False,
+            accelerator='gpu',
+            devices=1,
+            enable_progress_bar=False,
+            callbacks=[],
+            strategy='auto'
+        )
+        trainer.fit(model, train_loader, test_loader)
+        model.eval()
+        preds = []
+        with torch.no_grad():
+            for x, y in test_loader:
+                out = model(x)
+                preds.append(out.cpu().numpy())
+        preds = np.concatenate(preds).flatten()
         test_preds_list.append(preds)
     test_predictions = np.stack(test_preds_list, axis=1)
-    test_targets = y_test
-    
+    # Get test targets
+    _, test_loader = create_dataloaders(
+        data_main, time_data_main,  # Use actual static data
+        test_data, time_test_data,  # Use actual static data
+        cfg.model.seq_length, cfg.trainer.batch_size, 
+        feature_mask=np.ones(n_features, dtype=bool), num_workers=2
+    )
+    test_targets = []
+    for _, y in test_loader:
+        test_targets.append(y.cpu().numpy())
+    test_targets = np.concatenate(test_targets).flatten()
     # Evaluate ensemble
     test_rmse = evaluate_ensemble(meta, test_predictions, test_targets)
     print(f"Stacked ensemble test RMSE: {test_rmse:.4f}")
-    
-        # ---- MULTI-STEP RECURSIVE FORECAST ----
-    h = 3  # Number of steps ahead to forecast, match the paper
-    preds, targets = recursive_multistep_forecast(
-        test_data, pareto_models, meta, h, hidden_size=cfg.model.lstm_hidden_size
-    )
-
-    # Compute RMSE for each step
-    ms_rmses = []
-    for step in range(h):
-        step_preds = preds[:, step]
-        step_targets = targets[:, step]
-        rmse = np.sqrt(np.mean((step_preds - step_targets) ** 2))
-        ms_rmses.append(rmse)
-        print(f"Multi-step RMSE at step {step+1}: {rmse:.4f}")
-
-    # Optionally save results
-    ms_rmse_df = pd.DataFrame({
-        'step': list(range(1, h+1)),
-        'multi_step_rmse': ms_rmses
-    })
-    ms_rmse_df.to_csv('multi_step_rmse.csv', index=False)
-    print(f"Multi-step RMSEs saved to 'multi_step_rmse.csv'")
-
 
     # Save RMSE to the same CSV file
     rmse_df = pd.DataFrame({
@@ -179,8 +147,4 @@ def main(cfg: DictConfig):
     print(f"Test RMSE saved to 'feature_importances.csv'")
 
 if __name__ == "__main__":
-    torch.backends.cudnn.benchmark = True
     main()
-
-
-    

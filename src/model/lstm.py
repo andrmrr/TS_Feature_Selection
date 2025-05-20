@@ -5,11 +5,21 @@ from pytorch_lightning.callbacks import Callback
 from torch.utils.data import Dataset
 
 class TimeSeriesDataset(Dataset):
-    def __init__(self, sequence_data, static_data, seq_length):
-        self.data = sequence_data[:, 1:]
+    def __init__(self, sequence_data, static_data, seq_length, feature_mask=None, static_mask=None):
+        # Feature masking for sequence features
+        features = sequence_data[:, 1:]
+        if feature_mask is not None:
+            features = features[:, feature_mask]
+        self.data = features
+
         self.target = sequence_data[:, 0]
-        self.static_data = static_data
         self.target = self.target.reshape(-1, 1)
+        
+        # Feature masking for static features (optional, if needed)
+        if static_mask is not None:
+            static_data = static_data[:, static_mask]
+        self.static_data = static_data
+        
         self.data = torch.tensor(self.data, dtype=torch.float32)
         self.static_data = torch.tensor(self.static_data, dtype=torch.float32)
         self.target = torch.tensor(self.target, dtype=torch.float32)
@@ -79,9 +89,6 @@ class LSTMModel(pl.LightningModule):
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
         self.log('train_loss', loss, on_epoch=True, prog_bar=True)
-
-        values = {  "train_loss": loss }
-        
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -96,7 +103,7 @@ class LSTMModel(pl.LightningModule):
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
-        self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=False)
         return loss
     
     def configure_optimizers(self):

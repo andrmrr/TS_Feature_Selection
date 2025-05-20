@@ -3,20 +3,33 @@ data:
   path: data/data.npy
 time_data:
   path: data/time_data.npy
-model:
-  lstm_input_size: 32
-  lstm_hidden_size: 64
-  lstm_num_layers: 2
-  static_input_size: 63
-  static_hidden_size: 64
-  merged_hidden_size: 64
-  output_size: 1
-trainer:
-  max_epochs: 100
-  batch_size: 32
-  gpus: 1
-  gradient_clip_val: 0.5
 logger:
   save_dir: logs
   name: model
-  version: 1 
+  version: 1
+model:
+  # LSTM parameters
+  lstm_input_size: 31  # Your sequence features + 1 (for target)
+  lstm_hidden_size: 128
+  lstm_num_layers: 3
+  
+  # Static branch parameters
+  static_input_size: 63  # Your static features size (time features + current features)
+  static_hidden_size: 64
+  
+  # Combined branch parameters
+  merged_hidden_size: 64
+  output_size: 1
+  
+  # Training parameters
+  dropout: 0.3
+  learning_rate: 0.001
+  seq_length: 24
+trainer:
+  max_epochs: 50
+  batch_size: 32
+  gpus: 1
+feature_selection:
+  n_partitions: 5
+  population_size: 50
+  n_generations: 20

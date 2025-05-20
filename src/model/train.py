@@ -1,27 +1,11 @@
 import hydra
 from omegaconf import DictConfig
 import torch
-from torch.utils.data import DataLoader
-import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
-
+from utils import load_dataset, normalize_independently
+from torch.utils.data import DataLoader
 from lstm import LSTMModel, TimeSeriesDataset
-
-def load_dataset(path, time_data_path):
-    data = np.load(path, allow_pickle=True)
-    time_data = np.load(time_data_path, allow_pickle=True)
-    N = len(data)
-
-    train_end = int(N * 0.8)
-    train_data, train_time_data = data[:train_end], time_data[:train_end]
-    val_data, val_time_data = data[train_end:], time_data[train_end:]
-    train_dataset = TimeSeriesDataset(train_data, train_time_data, seq_length=24)
-    train_dataset[0]
-    val_dataset = TimeSeriesDataset(val_data, val_time_data, seq_length=24)
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=2)
-    return train_loader, val_loader
 
 
 @hydra.main(version_base=None, config_path="../../config", config_name="config")
@@ -32,6 +16,18 @@ def main(cfg: DictConfig):
         version=cfg.logger.version,
     )
     pl.seed_everything(cfg.seed)
+
+    data, time_data = load_dataset(cfg.data.path, cfg.time_data.path)
+    N = len(data)
+    test_start = int(N * 0.8)
+    norm_data, norm_time_data, _, _ = normalize_independently(data, time_data)
+    train_norm_data, valid_norm_data = norm_data[:test_start], norm_data[test_start:]
+    train_time_data, valid_time_data = norm_time_data[:test_start], norm_time_data[test_start:]
+    train_dataset = TimeSeriesDataset(train_norm_data, train_time_data, seq_length=cfg.model.seq_length)
+    val_dataset = TimeSeriesDataset(valid_norm_data, valid_time_data, seq_length=cfg.model.seq_length)
+    train_loader = DataLoader(train_dataset, batch_size=cfg.trainer.batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=cfg.trainer.batch_size, shuffle=False)
+    import pdb; pdb.set_trace()
     
     train_loader, val_loader = load_dataset(cfg.data.path, cfg.time_data.path)
 
@@ -50,14 +46,10 @@ def main(cfg: DictConfig):
         max_epochs=cfg.trainer.max_epochs,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=1 if torch.cuda.is_available() else 1,
-        gradient_clip_val=cfg.trainer.gradient_clip_val,
     )
-
+    
     trainer.fit(model, train_loader, val_loader)
 
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
     main()
-
-
-    

@@ -186,7 +186,55 @@ During implementation, several practical issues emerged:
 Despite these limitations, our methods provide a feasible pathway for embedded feature selection and interpretable feature importance estimation in LSTM-based time series forecasting. We believe the practical insights gained will be of value to researchers seeking to balance accuracy and complexity in deep time series models.
 
 
+
 \section{Results}
+The following figure is a barchart of the resulting feature importances:
+\begin{figure}[!h]
+  \includegraphics[scale=0.75]{images/feat_imp_barchart.jpg}
+  \caption{Feature Importances}
+  \centering
+  \label{fig:fimp}
+\end{figure}
+
+The following are the features with importances above a threshold of 0.8.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|l|c|}
+\hline
+et0 fao evapotranspiration   &  1.0  \\ \hline
+snow depth                   &  1.0  \\ \hline
+diffuse radiation            &  1.0  \\ \hline
+is day                       &  1.0  \\ \hline
+relative humidity 2m         &  1.0  \\ \hline
+terrestrial radiation        &  1.0  \\ \hline
+temperature 2m               &  0.975  \\ \hline
+soil temperature 0 to 7cm    &  0.975  \\ \hline
+shortwave radiation          &  0.926  \\ \hline
+sunshine duration            &  0.902  \\ \hline
+wind direction 10m           &  0.878  \\ \hline
+pressure msl                 &  0.853  \\ \hline
+surface pressure             &  0.829  \\ \hline
+cloud cover mid              &  0.804  \\ \hline
+
+\end{tabular}
+\caption{Most significant feature importances}
+\label{tab:Top_fint}
+\end{table}
+
+ Most of them are are self-explanatory and we will quickly explain the ones that are not:
+\begin{itemize}
+  \item \textbf{ET0 FAO56 EvapoTranspiration} is a composite irrigation indicator calculated using temperature, wind speed, humidity and solar radiation
+  \item \textbf{Diffuse Radiation} is the amount of solar radiation reflected from particles in the air.
+  \item \textbf{Terrestrial Radiation} is the amount of solar radiation that is reflected from the earth.
+  \item \textbf{Shortwave radiation} is the amount of specific solar radiation with wavelengths in and around the visible spectrum.
+  \item \textbf{Pressure MSL} represents the atmospheric pressure at the mean sea level
+  \item \textbf{Cloud Cover Mid} is cloud coverage between 2km and 6km high
+\end{itemize}
+
+As we can see, several features are present in all 45 of our partitions i.e. objective functions. They correspond to values of \textbf{1.0}. Nonetheless, we decided to keep all features with importance above \textbf{0.8}, which resulted in keeping \textbf{45\%} of our initial features. Additional preprocessing steps that consider correlation and other factors could reduce this number even further, while improving the results.
+
+Based on the given importances, we can make several conclusions. There exists a significant difference in electricity demand during daytime and nighttime. This can be attributed to greater human activity during the day, while most of the people are awake. Most of the shown features (sunshine, different radiations) are related to temperature, so that high and low temperatures incur cooling and heating, respectively. This is the biggest electricity demand factor, as almost half of the electricity in an (American) household [\textbf{ADD CITATION https://greenlogic.com/blog/the-top-5-biggest-users-of-electricity-in-your-home}] goes into cooling and heating. Other features, such as cloud cover, relative humidity, wind direction and air pressure also have a large influence on the weather, and therefore temperature as well as our perception of it. While further analysis could give a deeper insight on the effects that these factors have on the electricity consumption, with our limited knowledge on the subject, we accredit most of it to temperature as the driving factor of electrical consumption.
 
 \section{Discussion}
 

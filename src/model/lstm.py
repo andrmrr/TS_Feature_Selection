@@ -1,15 +1,53 @@
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import Callback
 from torch.utils.data import Dataset
+import numpy as np
+
+class TimeSeriesDatasetKPartitions(Dataset):
+    def __init__(self, sequence_data, static_data, seq_length, partition_idx, feature_mask=None, static_mask=None):
+        # Feature masking for sequence features
+        self.partition_idx = partition_idx
+        features = sequence_data[:, 1:]
+        if feature_mask is not None:
+            self.feature_mask = np.array(feature_mask).astype(bool)
+            features = features[:, self.feature_mask]
+        self.data = features
+
+        self.target = sequence_data[:, 0]
+        self.target = self.target.reshape(-1, 1)
+
+        if static_mask is not None:
+            static_data = static_data[:, self.static_mask]
+        self.static_data = static_data
+        
+        self.data = torch.tensor(self.data, dtype=torch.float32)
+        self.static_data = torch.tensor(self.static_data, dtype=torch.float32)
+        self.target = torch.tensor(self.target, dtype=torch.float32)
+        self.seq_length = seq_length
+
+    def __len__(self):
+        return int((len(self.data) - self.seq_length)/self.partition_idx)
+
+    def __getitem__(self, idx):
+        idx = int(idx * self.partition_idx)
+        current_features = self.data[idx]
+        current_static_features = self.static_data[idx]
+
+        old_features = self.data[idx: idx + self.seq_length]
+        old_targets = self.target[idx: idx + self.seq_length]
+        seq_x = torch.cat((old_features, old_targets), dim=1)
+        static_x = torch.cat((current_features, current_static_features))
+        y = self.target[idx + self.seq_length]
+        return (seq_x.detach().clone(), static_x.detach().clone()), y.detach().clone()
 
 class TimeSeriesDataset(Dataset):
     def __init__(self, sequence_data, static_data, seq_length, feature_mask=None, static_mask=None):
         # Feature masking for sequence features
         features = sequence_data[:, 1:]
         if feature_mask is not None:
-            features = features[:, feature_mask]
+            self.feature_mask = np.array(feature_mask).astype(bool)
+            features = features[:, self.feature_mask]
         self.data = features
 
         self.target = sequence_data[:, 0]
@@ -17,7 +55,8 @@ class TimeSeriesDataset(Dataset):
         
         # Feature masking for static features (optional, if needed)
         if static_mask is not None:
-            static_data = static_data[:, static_mask]
+            self.static_mask = np.array(static_mask).astype(bool)
+            static_data = static_data[:, self.static_mask]
         self.static_data = static_data
         
         self.data = torch.tensor(self.data, dtype=torch.float32)
@@ -71,9 +110,12 @@ class LSTMModel(pl.LightningModule):
         
         self.loss_fn = nn.MSELoss()
 
-    def forward(self, x):
+    def forward(self, x, seq_mask=None):
         seq_x, static_x = x
         # SEQUENTIAL BRANCH
+        if seq_mask is not None:
+            mask = torch.tensor(seq_mask.tolist() + [1], device=seq_x.device, dtype=seq_x.dtype)
+            seq_x = seq_x * mask  # broadcast mask over batch and seq_len
         lstm_out, _ = self.sequential_fc[0](seq_x)
         lstm_out = lstm_out[:, -1, :]
         lstm_out = self.sequential_fc[1:](lstm_out)
@@ -92,7 +134,6 @@ class LSTMModel(pl.LightningModule):
         return loss
     
     def validation_step(self, batch, batch_idx):
-        import pdb; pdb.set_trace()
         x, y = batch
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)

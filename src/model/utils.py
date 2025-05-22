@@ -13,7 +13,7 @@ def load_dataset_2(path, time_data_path):
     val_data, val_time_data = data[train_end:], time_data[train_end:]
     train_dataset = TimeSeriesDataset(train_data, train_time_data, seq_length=24)
     val_dataset = TimeSeriesDataset(val_data, val_time_data, seq_length=24)
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False, num_workers=2)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=2)
     return train_loader, val_loader
 

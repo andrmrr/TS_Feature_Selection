@@ -4,79 +4,61 @@ from sklearn.metrics import mean_squared_error
 import torch
 import pytorch_lightning as pl
 from lstm import LSTMModel
-from utils import partition_time_series, split_train_val, create_dataloaders
+from lstm import TimeSeriesDataset
+from torch.utils.data import DataLoader
 
 class FeatureSelectionProblem(Problem):
-    def __init__(self, data, n_partitions, seq_length, input_size, hidden_size, num_layers, max_epochs, batch_size=32, device='cpu'):
+    def __init__(self, train_norm_data, valid_norm_data, train_time_data, valid_time_data,
+                 n_partitions, input_size, device='cpu', model=None,  seq_length=10):
         super().__init__(input_size, n_partitions)
         self.types[:] = [Binary(1) for _ in range(input_size)]
         self.directions[:] = [self.MINIMIZE] * n_partitions
-        self.data = data
+        self.train_norm_data=train_norm_data
+        self.valid_norm_data=valid_norm_data
+        self.train_time_data=train_time_data
+        self.valid_time_data=valid_time_data
         self.n_partitions = n_partitions
-        self.seq_length = seq_length
         self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.max_epochs = max_epochs
-        self.batch_size = batch_size
+        self.seq_length = seq_length
         self.device = device
-        self.partitions = partition_time_series(data, n_partitions)
-        self.train_val = [split_train_val(p) for p in self.partitions]
+        self.model = model.eval().to(device)
 
     def evaluate(self, solution):
         mask = np.array([int(bit[0]) for bit in solution.variables])
+        print(mask)
         if mask.sum() == 0:
             # Penalize empty feature set
             solution.objectives[:] = [1e6] * self.n_partitions
             return
         rmses = []
-        for (train_data, val_data) in self.train_val:
-            # Create empty static features
-            train_static = np.zeros((len(train_data), 1))  # Single dummy static feature
-            val_static = np.zeros((len(val_data), 1))  # Single dummy static feature
-            
-            train_loader, val_loader = create_dataloaders(
-                train_data, train_static,
-                val_data, val_static,
-                self.seq_length, self.batch_size, feature_mask=mask.astype(bool)
-            )
-            model = LSTMModel(
-                lstm_input_size=mask.sum() + 1,  # +1 for target that's concatenated in __getitem__
-                lstm_hidden_size=self.hidden_size,
-                lstm_num_layers=self.num_layers,
-                static_input_size=1,  # Single dummy static feature
-                static_hidden_size=self.hidden_size,  # Using same size as LSTM hidden size
-                merged_hidden_size=self.hidden_size,  # Using same size as LSTM hidden size
-                output_size=1  # Single output for regression
-            )
-            trainer = pl.Trainer(
-                max_epochs=self.max_epochs,
-                enable_checkpointing=False,
-                logger=False,
-                enable_model_summary=False,
-                accelerator='gpu',
-                devices=1,
-                enable_progress_bar=False,
-                callbacks=[],
-                strategy='auto'
-            )
-            trainer.fit(model, train_loader, val_loader)
-            preds, targets = [], []
-            model.eval()
-            with torch.no_grad():
-                for x, y in val_loader:
-                    out = model(x)
-                    preds.append(out.cpu().numpy())
-                    targets.append(y.cpu().numpy())
-            preds = np.concatenate(preds).flatten()
-            targets = np.concatenate(targets).flatten()
-            rmse = np.sqrt(mean_squared_error(targets, preds))
+        train_dataset = TimeSeriesDataset(
+            self.train_norm_data, self.train_time_data, seq_length=self.seq_length, feature_mask=None, static_mask=None
+        )
+        train_loader = DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=False, num_workers=4, persistent_workers=True)
+        preds, targets = [], []
+        with torch.no_grad():
+            for x, y in train_loader:
+                if isinstance(x, (tuple, list)):
+                    x = tuple(xx.to(self.device) for xx in x)
+                else:
+                    x = x.to(self.device)
+                y = y.to(self.device)
+                out = self.model(x, seq_mask=mask)
+                preds.append(out.cpu().numpy())
+                targets.append(y.cpu().numpy())
+        preds = np.concatenate(preds).flatten()
+        targets = np.concatenate(targets).flatten()
+        partition_size = len(preds) // self.n_partitions
+        for i in range(self.n_partitions):
+            rmse = np.sqrt(mean_squared_error(targets[i*partition_size:(i+1)*partition_size], preds[i*partition_size:(i+1)*partition_size]))
             rmses.append(rmse)
         solution.objectives[:] = rmses
 
-def run_nsga2_feature_selection(data, n_partitions, seq_length, input_size, hidden_size, num_layers, max_epochs, batch_size=32, population_size=20, n_generations=10, device='cpu'):
+def run_nsga2_feature_selection(train_norm_data, valid_norm_data, train_time_data, valid_time_data, input_size,
+                                n_partitions, model, population_size=20, n_generations=10, device='cpu', seq_length=10):
     problem = FeatureSelectionProblem(
-        data, n_partitions, seq_length, input_size, hidden_size, num_layers, max_epochs, batch_size, device
+        train_norm_data, valid_norm_data, train_time_data, valid_time_data,
+        n_partitions, input_size, device, model=model, seq_length=seq_length
     )
     algorithm = NSGAII(problem, population_size)
     algorithm.run(n_generations)
